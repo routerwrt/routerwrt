@@ -40,11 +40,9 @@ define Package/base-files
   SECTION:=base
   CATEGORY:=Base system
   DEPENDS:= \
-	+netifd +libc +jsonfilter +SIGNED_PACKAGES:usign +SIGNED_PACKAGES:openwrt-keyring \
-	+NAND_SUPPORT:ubi-utils +fstools +fwtool \
-	+SELINUX:procd-selinux +!SELINUX:procd +USE_SECCOMP:procd-seccomp \
-	+SELINUX:busybox-selinux +!SELINUX:busybox \
-	+ucode +ucode-mod-fs +ucode-mod-digest
+	+libc +SIGNED_PACKAGES:usign +SIGNED_PACKAGES:openwrt-keyring \
+	+NAND_SUPPORT:ubi-utils +fwtool\
+	+SELINUX:busybox-selinux +!SELINUX:busybox
   TITLE:=Base filesystem for OpenWrt
   URL:=https://openwrt.org/
   VERSION:=$(PKG_RELEASE)~$(lastword $(subst -, ,$(REVISION)))
@@ -193,8 +191,6 @@ define Package/base-files/install
 
 
 	$(SED) "s#%PATH%#$(TARGET_INIT_PATH)#g" \
-		$(1)/sbin/hotplug-call \
-		$(1)/etc/preinit \
 		$(1)/etc/profile
 
 	mkdir -p \
@@ -202,12 +198,15 @@ define Package/base-files/install
 		$(1)/dev \
 		$(1)/etc/config \
 		$(1)/etc/crontabs \
-		$(1)/etc/rc.d \
+		$(1)/etc/sv \
+		$(1)/etc/service \
 		$(1)/overlay \
 		$(1)/lib/firmware \
 		$(1)/mnt \
 		$(1)/proc \
 		$(1)/tmp \
+		$(1)/tmp/run \
+		$(1)/tmp/lib/misc \
 		$(1)/usr/lib \
 		$(1)/usr/bin \
 		$(1)/sys \
@@ -218,6 +217,13 @@ define Package/base-files/install
 	$(LN) /proc/mounts $(1)/etc/mtab
 	$(if $(LIB_SUFFIX),-$(LN) lib $(1)/lib$(LIB_SUFFIX))
 	$(if $(LIB_SUFFIX),-$(LN) lib $(1)/usr/lib$(LIB_SUFFIX))
+
+	# runit service definitions
+	for service in $(notdir $(wildcard ./files/sv/*)); do \
+		$(INSTALL_DIR) $(1)/etc/sv/$$$$service; \
+		$(INSTALL_BIN) ./files/sv/$$$$service/run \
+			$(1)/etc/sv/$$$$service/run; \
+	done
 
 ifneq ($(CONFIG_TARGET_ROOTFS_PERSIST_VAR),y)
 	rm -f $(1)/var
@@ -265,16 +271,6 @@ else
 	$(if $(CONFIG_IPK_FILES_CHECKSUMS),, \
 		rm -f $(1)/sbin/pkg_check)
 endif
-	$(if $(CONFIG_TARGET_BUTTON_CUSTOMIZATION_FAILSAFE_DISABLED), \
-		rm -f $(1)/etc/rc.button/failsafe)
-	$(if $(CONFIG_TARGET_BUTTON_CUSTOMIZATION_POWER_DISABLED), \
-		rm -f $(1)/etc/rc.button/power)
-	$(if $(CONFIG_TARGET_BUTTON_CUSTOMIZATION_REBOOT_DISABLED), \
-		rm -f $(1)/etc/rc.button/reboot)
-	$(if $(CONFIG_TARGET_BUTTON_CUSTOMIZATION_RESET_DISABLED), \
-		rm -f $(1)/etc/rc.button/reset)
-	$(if $(CONFIG_TARGET_BUTTON_CUSTOMIZATION_RF_KILL_DISABLED), \
-		rm -f $(1)/etc/rc.button/rfkill)
 endef
 
 ifneq ($(DUMP),1)

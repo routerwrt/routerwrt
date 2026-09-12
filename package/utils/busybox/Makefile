@@ -48,8 +48,8 @@ define Package/busybox/Default
   MAINTAINER:=Felix Fietkau <nbd@nbd.name>
   TITLE:=Core utilities for embedded Linux
   URL:=https://busybox.net/
-  DEPENDS:= +USE_GLIBC:libcrypt-compat +BUSYBOX_CONFIG_PAM:libpam +BUSYBOX_CONFIG_NTPD:jsonfilter +(USE_GLIBC&&BUSYBOX_CONFIG_FEATURE_MOUNT_NFS)||(USE_GLIBC&&BUSYBOX_CONFIG_FEATURE_INETD_RPC):libtirpc
-  USERID:=ntp=123:ntp=123
+  DEPENDS:= +USE_GLIBC:libcrypt-compat +BUSYBOX_CONFIG_PAM:libpam +(USE_GLIBC&&BUSYBOX_CONFIG_FEATURE_MOUNT_NFS)||(USE_GLIBC&&BUSYBOX_CONFIG_FEATURE_INETD_RPC):libtirpc
+ USERID:=ntp=123:ntp=123
 endef
 
 define Package/busybox
@@ -148,25 +148,16 @@ define Build/Compile
 endef
 
 define Package/busybox/install
-	$(INSTALL_DIR) $(1)/etc/init.d
+        $(INSTALL_DIR) $(1)/etc
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(CP) $(PKG_INSTALL_DIR)/* $(1)/
-	$(INSTALL_DIR) $(1)/etc/profile.d
-	$(INSTALL_BIN) ./files/busybox-history-file.sh $(1)/etc/profile.d
 ifneq ($(CONFIG_BUSYBOX_$(BUSYBOX_SYM)_FEATURE_SYSLOG)$(CONFIG_BUSYBOX_$(BUSYBOX_SYM)_FEATURE_SYSLOGD_CFG),)
 	touch $(1)/etc/syslog.conf
 endif
 ifneq ($(CONFIG_BUSYBOX_$(BUSYBOX_SYM)_CROND),)
-	$(INSTALL_BIN) ./files/cron $(1)/etc/init.d/cron
 	$(INSTALL_DIR) $(1)/etc/crontabs
 endif
-ifneq ($(CONFIG_BUSYBOX_$(BUSYBOX_SYM)_NTPD),)
-	$(INSTALL_BIN) ./files/sysntpd $(1)/etc/init.d/sysntpd
-	$(INSTALL_BIN) ./files/ntpd-hotplug $(1)/usr/sbin/ntpd-hotplug
-	$(INSTALL_DIR) $(1)/etc/capabilities $(1)/usr/share/acl.d
-	$(INSTALL_DATA) ./files/ntpd.capabilities $(1)/etc/capabilities/ntpd.json
-	$(INSTALL_DATA) ./files/ntpd_acl.json $(1)/usr/share/acl.d/ntpd.json
-endif
+
 	-rm -rf $(1)/lib64
 endef
 

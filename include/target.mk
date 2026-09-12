@@ -20,17 +20,9 @@ DEVICE_TYPE?=router
 ##
 DEFAULT_PACKAGES:=\
 	base-files \
-	ca-bundle \
-	dropbear \
 	fstools \
 	libc \
 	libgcc \
-	libustream-mbedtls \
-	logd \
-	mtd \
-	netifd \
-	uci \
-	uclient-fetch \
 	urandom-seed \
 	urngd
 
@@ -49,15 +41,7 @@ DEFAULT_PACKAGES.nas:=\
 ##@
 # @brief Default packages for @DEVICE_TYPE router.
 ##
-DEFAULT_PACKAGES.router:=\
-	dnsmasq \
-	firewall4 \
-	nftables \
-	kmod-nft-offload \
-	odhcp6c \
-	odhcpd-ipv6only \
-	ppp \
-	ppp-mod-pppoe
+DEFAULT_PACKAGES.router:=
 
 ifneq ($(DUMP),)
   all: dumpinfo

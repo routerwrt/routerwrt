@@ -1,19 +1,12 @@
-#
-# Makefile for the Ralink SoCs built-in ethernet macs
-#
+obj-$(CONFIG_NET_RALINK) += ralink-fe.o
 
-ralink-eth-y					+= mtk_eth_soc.o ethtool.o
+ralink-fe-y := ralink_fe.o
 
-ralink-eth-$(CONFIG_NET_RALINK_MDIO)		+= mdio.o
-ralink-eth-$(CONFIG_NET_RALINK_MDIO_RT2880)	+= mdio_rt2880.o
-ralink-eth-$(CONFIG_NET_RALINK_MDIO_MT7620)	+= mdio_mt7620.o
+ralink-fe-$(CONFIG_RALINK_FE_PPE) += ra_ppe.o
+ralink-fe-$(CONFIG_RALINK_FE_PPE) += ra_ppe_offload.o
 
-ralink-eth-$(CONFIG_NET_RALINK_RT2880)	+= soc_rt2880.o
-ralink-eth-$(CONFIG_NET_RALINK_RT3050)	+= soc_rt3050.o
-ralink-eth-$(CONFIG_NET_RALINK_RT3883)	+= soc_rt3883.o
-ralink-eth-$(CONFIG_NET_RALINK_MT7620)	+= soc_mt7620.o
+ralink-fe-$(CONFIG_RALINK_FE_PPE_V1) += ra_ppe_v1.o
+ralink-fe-$(CONFIG_RALINK_FE_PPE_V1) += ra_ppe_v1_offload.o
 
-obj-$(CONFIG_NET_RALINK_ESW_RT3050)		+= esw_rt3050.o
-obj-$(CONFIG_NET_RALINK_GSW_MT7620)		+= gsw_mt7620.o mt7530.o
-obj-$(CONFIG_NET_DSA_MT7620)			+= gsw_mt7620_dsa.o
-obj-$(CONFIG_NET_RALINK_SOC)			+= ralink-eth.o
+ralink-fe-$(CONFIG_RALINK_FE_PPE_V2) += ra_ppe_v2.o
+ralink-fe-$(CONFIG_RALINK_FE_PPE_V2) += ra_ppe_v2_offload.o

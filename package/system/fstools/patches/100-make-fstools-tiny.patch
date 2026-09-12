@@ -1,0 +1,1434 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,99 +1,79 @@
+ cmake_minimum_required(VERSION 3.10)
+ 
+ PROJECT(fs-tools C)
+-ADD_DEFINITIONS(-Os -ggdb -Wall -Werror --std=gnu99 -Wmissing-declarations -Wno-format-truncation)
++
++ADD_DEFINITIONS(
++	-Os
++	-ggdb
++	-Wall
++	-Werror
++	--std=gnu99
++	-Wmissing-declarations
++	-Wno-format-truncation
++)
+ 
+ SET(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
+ 
+ ADD_LIBRARY(fstools SHARED
+-		libfstools/common.c
+-		libfstools/snapshot.c
+-		libfstools/extroot.c
+-		libfstools/fit.c
+-		libfstools/overlay.c
+-		libfstools/volume.c
+-		libfstools/mtd.c
+-		libfstools/mount.c
+-		libfstools/ubi.c
+-		libfstools/rootdisk.c
+-		libfstools/partname.c
+-		libfstools/find.c)
+-TARGET_LINK_LIBRARIES(fstools ubox)
+-INSTALL(TARGETS fstools LIBRARY DESTINATION lib)
+-
+-ADD_LIBRARY(blkid-tiny SHARED
+-		libblkid-tiny/encode.c
+-		libblkid-tiny/libblkid-tiny.c
+-		libblkid-tiny/mkdev.c
+-		libblkid-tiny/probe.c
+-		libblkid-tiny/exfat.c
+-		libblkid-tiny/ext.c
+-		libblkid-tiny/jffs2.c
+-		libblkid-tiny/vfat.c
+-		libblkid-tiny/ntfs.c
+-		libblkid-tiny/hfs.c
+-		libblkid-tiny/swap.c
+-		libblkid-tiny/ubi.c
+-		libblkid-tiny/ubifs.c
+-		libblkid-tiny/squashfs.c
+-		libblkid-tiny/btrfs.c
+-		libblkid-tiny/f2fs.c
+-		)
+-INSTALL(TARGETS blkid-tiny LIBRARY DESTINATION lib)
+-INSTALL(FILES libblkid-tiny/libblkid-tiny.h DESTINATION include)
+-
+-ADD_LIBRARY(ubi-utils STATIC
+-		libubi/libubi.c
+-		libubi/libubi-tiny.c
+-		libubi/ubiutils-common.c)
+-INSTALL(TARGETS ubi-utils ARCHIVE DESTINATION lib)
+-
+-FIND_PATH(ubox_include_dir libubox/ulog.h)
+-INCLUDE_DIRECTORIES(${ubox_include_dir})
+-
+-SET_TARGET_PROPERTIES(ubi-utils PROPERTIES COMPILE_FLAGS
+-		"-ffunction-sections -fdata-sections")
++	libfstools/common.c
++	libfstools/snapshot.c
++	libfstools/md5.c
++	libfstools/extroot.c
++	libfstools/fit.c
++	libfstools/overlay.c
++	libfstools/volume.c
++	libfstools/mtd.c
++	libfstools/mount.c
++	libfstools/ubi.c
++	libfstools/rootdisk.c
++	libfstools/partname.c
++	libfstools/find.c
++)
+ 
+-INSTALL(FILES libubi/libubi-tiny.h libubi/libubi.h libubi/ubi-media.h
+-		libubi/ubi-user.h libubi/ubi-media.h
+-	DESTINATION include
++INSTALL(TARGETS fstools
++	LIBRARY DESTINATION lib
+ )
+ 
+ IF(DEFINED CMAKE_OVL_MOUNT_COMPRESS_ZLIB)
+ 	ADD_DEFINITIONS(-DOVL_MOUNT_COMPRESS_ZLIB)
+-ENDIF(DEFINED CMAKE_OVL_MOUNT_COMPRESS_ZLIB)
++ENDIF()
+ 
+ IF(DEFINED CMAKE_OVL_MOUNT_FULL_ACCESS_TIME)
+ 	ADD_DEFINITIONS(-DOVL_MOUNT_FULL_ACCESS_TIME)
+-ENDIF(DEFINED CMAKE_OVL_MOUNT_FULL_ACCESS_TIME)
++ENDIF()
+ 
+-ADD_EXECUTABLE(mount_root mount_root.c)
+-TARGET_LINK_LIBRARIES(mount_root fstools)
+-INSTALL(TARGETS mount_root RUNTIME DESTINATION sbin)
++IF(DEFINED CMAKE_NAND_SUPPORT)
++	ADD_LIBRARY(ubi-utils STATIC
++		libubi/libubi.c
++		libubi/libubi-tiny.c
++		libubi/ubiutils-common.c
++	)
+ 
+-find_library(json NAMES json-c json)
++	SET_TARGET_PROPERTIES(ubi-utils PROPERTIES
++		COMPILE_FLAGS "-ffunction-sections -fdata-sections"
++	)
++
++	INSTALL(TARGETS ubi-utils
++		ARCHIVE DESTINATION lib
++	)
++
++	INSTALL(FILES
++		libubi/libubi-tiny.h
++		libubi/libubi.h
++		libubi/ubi-media.h
++		libubi/ubi-user.h
++		DESTINATION include
++	)
++ENDIF()
+ 
+-ADD_EXECUTABLE(blockd blockd.c)
+-TARGET_LINK_LIBRARIES(blockd fstools ubus blobmsg_json ${json})
+-INSTALL(TARGETS blockd RUNTIME DESTINATION sbin)
+-
+-ADD_EXECUTABLE(block block.c probe.c probe-libblkid.c)
+-IF(DEFINED CMAKE_UBIFS_EXTROOT)
+-	ADD_DEFINITIONS(-DUBIFS_EXTROOT)
+-	TARGET_LINK_LIBRARIES(block blkid-tiny dl uci ubox ubus blobmsg_json ubi-utils ${json})
+-ELSE(DEFINED CMAKE_UBIFS_EXTROOT)
+-	TARGET_LINK_LIBRARIES(block blkid-tiny dl uci ubox ubus blobmsg_json ${json})
+-ENDIF(DEFINED CMAKE_UBIFS_EXTROOT)
+-INSTALL(TARGETS block RUNTIME DESTINATION sbin)
++ADD_EXECUTABLE(mount_root mount_root.c)
++TARGET_LINK_LIBRARIES(mount_root fstools)
++INSTALL(TARGETS mount_root
++	RUNTIME DESTINATION sbin
++)
+ 
+ ADD_EXECUTABLE(factoryreset factoryreset.c)
+ TARGET_LINK_LIBRARIES(factoryreset fstools)
+-INSTALL(TARGETS factoryreset RUNTIME DESTINATION sbin)
+-
+-ADD_EXECUTABLE(snapshot_tool snapshot.c)
+-TARGET_LINK_LIBRARIES(snapshot_tool fstools)
+-INSTALL(TARGETS snapshot_tool RUNTIME DESTINATION sbin)
+-
+-ADD_EXECUTABLE(ubi ubi.c)
+-TARGET_LINK_LIBRARIES(ubi ubi-utils ubox)
+-INSTALL(TARGETS ubi RUNTIME DESTINATION sbin)
++INSTALL(TARGETS factoryreset
++	RUNTIME DESTINATION sbin
++)
+--- a/factoryreset.c
++++ b/factoryreset.c
+@@ -15,7 +15,7 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <sys/reboot.h>
+-#include <libubox/ulog.h>
++#include "libfstools/ulog.h"
+ 
+ #include <fcntl.h>
+ #include <dirent.h>
+--- a/libfstools/common.h
++++ b/libfstools/common.h
+@@ -18,6 +18,7 @@
+ 
+ #include "libfstools.h"
+ #include "volume.h"
++#include "compat.h"
+ 
+ #define F2FS_MINSIZE		(100ULL * 1024ULL * 1024ULL)
+ 
+--- a/libfstools/find.c
++++ b/libfstools/find.c
+@@ -16,6 +16,7 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/sysmacros.h>
++#include <stdlib.h>
+ 
+ #include "libfstools.h"
+ 
+--- a/libfstools/libfstools.h
++++ b/libfstools/libfstools.h
+@@ -14,10 +14,12 @@
+ #ifndef _FS_STATE_H__
+ #define _FS_STATE_H__
+ 
+-#include <libubox/list.h>
+-#include <libubox/blob.h>
+-#include <libubox/ulog.h>
+-#include <libubox/utils.h>
++#include "list.h"
++#include <errno.h>
++#include "compat.h"
++//#include <libubox/blob.h>
++//#include "ulog.h"
++//#include <libubox/utils.h>
+ 
+ struct volume;
+ 
+--- a/libfstools/mount.c
++++ b/libfstools/mount.c
+@@ -20,6 +20,7 @@
+ #include <stdio.h>
+ #include <unistd.h>
+ #include <string.h>
++#include <stdlib.h>
+ 
+ #include "libfstools.h"
+ 
+--- a/libfstools/mtd.c
++++ b/libfstools/mtd.c
+@@ -19,6 +19,7 @@
+ #include <unistd.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <string.h>
+ #include <mtd/mtd-user.h>
+ 
+ #include "libfstools.h"
+--- a/libfstools/snapshot.c
++++ b/libfstools/snapshot.c
+@@ -26,9 +26,9 @@
+ #include <unistd.h>
+ #include <string.h>
+ 
+-#include <libubox/list.h>
+-#include <libubox/blob.h>
+-#include <libubox/md5.h>
++#include "list.h"
++//#include <libubox/blob.h>
++#include "md5.h"
+ 
+ #include "libfstools.h"
+ #include "volume.h"
+--- a/mount_root.c
++++ b/mount_root.c
+@@ -17,8 +17,9 @@
+ #include <unistd.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <string.h>
+ 
+-#include <libubox/ulog.h>
++#include "libfstools/ulog.h"
+ 
+ #include "libfstools/libfstools.h"
+ #include "libfstools/volume.h"
+--- /dev/null
++++ b/libfstools/md5.c
+@@ -0,0 +1,336 @@
++/*
++ * Copyright (C) 2014 Felix Fietkau <nbd@openwrt.org>
++ *
++ * Permission to use, copy, modify, and/or distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ */
++/*
++ * This is an OpenSSL-compatible implementation of the RSA Data Security, Inc.
++ * MD5 Message-Digest Algorithm (RFC 1321).
++ *
++ * Homepage:
++ * http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5
++ *
++ * Author:
++ * Alexander Peslyak, better known as Solar Designer <solar at openwall.com>
++ *
++ * This software was written by Alexander Peslyak in 2001.  No copyright is
++ * claimed, and the software is hereby placed in the public domain.
++ * In case this attempt to disclaim copyright and place the software in the
++ * public domain is deemed null and void, then the software is
++ * Copyright (c) 2001 Alexander Peslyak and it is hereby released to the
++ * general public under the following terms:
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted.
++ *
++ * There's ABSOLUTELY NO WARRANTY, express or implied.
++ *
++ * (This is a heavily cut-down "BSD license".)
++ *
++ * This differs from Colin Plumb's older public domain implementation in that
++ * no exactly 32-bit integer data type is required (any 32-bit or wider
++ * unsigned integer data type will do), there's no compile-time endianness
++ * configuration, and the function prototypes match OpenSSL's.  No code from
++ * Colin Plumb's implementation has been reused; this comment merely compares
++ * the properties of the two independent implementations.
++ *
++ * The primary goals of this implementation are portability and ease of use.
++ * It is meant to be fast, but not as fast as possible.  Some known
++ * optimizations are not included to reduce source code size and avoid
++ * compile-time configuration.
++ */
++
++#include <string.h>
++#include <stdio.h>
++
++#include "utils.h"
++#include "md5.h"
++
++/*
++ * The basic MD5 functions.
++ *
++ * F and G are optimized compared to their RFC 1321 definitions for
++ * architectures that lack an AND-NOT instruction, just like in Colin Plumb's
++ * implementation.
++ */
++#define F(x, y, z)			((z) ^ ((x) & ((y) ^ (z))))
++#define G(x, y, z)			((y) ^ ((z) & ((x) ^ (y))))
++#define H(x, y, z)			(((x) ^ (y)) ^ (z))
++#define H2(x, y, z)			((x) ^ ((y) ^ (z)))
++#define I(x, y, z)			((y) ^ ((x) | ~(z)))
++
++/*
++ * The MD5 transformation for all four rounds.
++ */
++#define STEP(f, a, b, c, d, x, t, s) \
++	(a) += f((b), (c), (d)) + (x) + (t); \
++	(a) = (((a) << (s)) | (((a) & 0xffffffff) >> (32 - (s)))); \
++	(a) += (b);
++
++/*
++ * SET reads 4 input bytes in little-endian byte order and stores them
++ * in a properly aligned word in host byte order.
++ */
++#if __BYTE_ORDER == __LITTLE_ENDIAN
++#define SET(n) \
++	(*(uint32_t *)&ptr[(n) * 4])
++#define GET(n) \
++	SET(n)
++#else
++#define SET(n) \
++	(block[(n)] = \
++	(uint32_t)ptr[(n) * 4] | \
++	((uint32_t)ptr[(n) * 4 + 1] << 8) | \
++	((uint32_t)ptr[(n) * 4 + 2] << 16) | \
++	((uint32_t)ptr[(n) * 4 + 3] << 24))
++#define GET(n) \
++	(block[(n)])
++#endif
++
++/*
++ * This processes one or more 64-byte data blocks, but does NOT update
++ * the bit counters.  There are no alignment requirements.
++ */
++static const void *body(md5_ctx_t *ctx, const void *data, unsigned long size)
++{
++	const unsigned char *ptr;
++	uint32_t a, b, c, d;
++	uint32_t saved_a, saved_b, saved_c, saved_d;
++#if __BYTE_ORDER != __LITTLE_ENDIAN
++	uint32_t block[16];
++#endif
++
++	ptr = (const unsigned char *)data;
++
++	a = ctx->a;
++	b = ctx->b;
++	c = ctx->c;
++	d = ctx->d;
++
++	do {
++		saved_a = a;
++		saved_b = b;
++		saved_c = c;
++		saved_d = d;
++
++/* Round 1 */
++		STEP(F, a, b, c, d, SET(0), 0xd76aa478, 7)
++		STEP(F, d, a, b, c, SET(1), 0xe8c7b756, 12)
++		STEP(F, c, d, a, b, SET(2), 0x242070db, 17)
++		STEP(F, b, c, d, a, SET(3), 0xc1bdceee, 22)
++		STEP(F, a, b, c, d, SET(4), 0xf57c0faf, 7)
++		STEP(F, d, a, b, c, SET(5), 0x4787c62a, 12)
++		STEP(F, c, d, a, b, SET(6), 0xa8304613, 17)
++		STEP(F, b, c, d, a, SET(7), 0xfd469501, 22)
++		STEP(F, a, b, c, d, SET(8), 0x698098d8, 7)
++		STEP(F, d, a, b, c, SET(9), 0x8b44f7af, 12)
++		STEP(F, c, d, a, b, SET(10), 0xffff5bb1, 17)
++		STEP(F, b, c, d, a, SET(11), 0x895cd7be, 22)
++		STEP(F, a, b, c, d, SET(12), 0x6b901122, 7)
++		STEP(F, d, a, b, c, SET(13), 0xfd987193, 12)
++		STEP(F, c, d, a, b, SET(14), 0xa679438e, 17)
++		STEP(F, b, c, d, a, SET(15), 0x49b40821, 22)
++
++/* Round 2 */
++		STEP(G, a, b, c, d, GET(1), 0xf61e2562, 5)
++		STEP(G, d, a, b, c, GET(6), 0xc040b340, 9)
++		STEP(G, c, d, a, b, GET(11), 0x265e5a51, 14)
++		STEP(G, b, c, d, a, GET(0), 0xe9b6c7aa, 20)
++		STEP(G, a, b, c, d, GET(5), 0xd62f105d, 5)
++		STEP(G, d, a, b, c, GET(10), 0x02441453, 9)
++		STEP(G, c, d, a, b, GET(15), 0xd8a1e681, 14)
++		STEP(G, b, c, d, a, GET(4), 0xe7d3fbc8, 20)
++		STEP(G, a, b, c, d, GET(9), 0x21e1cde6, 5)
++		STEP(G, d, a, b, c, GET(14), 0xc33707d6, 9)
++		STEP(G, c, d, a, b, GET(3), 0xf4d50d87, 14)
++		STEP(G, b, c, d, a, GET(8), 0x455a14ed, 20)
++		STEP(G, a, b, c, d, GET(13), 0xa9e3e905, 5)
++		STEP(G, d, a, b, c, GET(2), 0xfcefa3f8, 9)
++		STEP(G, c, d, a, b, GET(7), 0x676f02d9, 14)
++		STEP(G, b, c, d, a, GET(12), 0x8d2a4c8a, 20)
++
++/* Round 3 */
++		STEP(H, a, b, c, d, GET(5), 0xfffa3942, 4)
++		STEP(H2, d, a, b, c, GET(8), 0x8771f681, 11)
++		STEP(H, c, d, a, b, GET(11), 0x6d9d6122, 16)
++		STEP(H2, b, c, d, a, GET(14), 0xfde5380c, 23)
++		STEP(H, a, b, c, d, GET(1), 0xa4beea44, 4)
++		STEP(H2, d, a, b, c, GET(4), 0x4bdecfa9, 11)
++		STEP(H, c, d, a, b, GET(7), 0xf6bb4b60, 16)
++		STEP(H2, b, c, d, a, GET(10), 0xbebfbc70, 23)
++		STEP(H, a, b, c, d, GET(13), 0x289b7ec6, 4)
++		STEP(H2, d, a, b, c, GET(0), 0xeaa127fa, 11)
++		STEP(H, c, d, a, b, GET(3), 0xd4ef3085, 16)
++		STEP(H2, b, c, d, a, GET(6), 0x04881d05, 23)
++		STEP(H, a, b, c, d, GET(9), 0xd9d4d039, 4)
++		STEP(H2, d, a, b, c, GET(12), 0xe6db99e5, 11)
++		STEP(H, c, d, a, b, GET(15), 0x1fa27cf8, 16)
++		STEP(H2, b, c, d, a, GET(2), 0xc4ac5665, 23)
++
++/* Round 4 */
++		STEP(I, a, b, c, d, GET(0), 0xf4292244, 6)
++		STEP(I, d, a, b, c, GET(7), 0x432aff97, 10)
++		STEP(I, c, d, a, b, GET(14), 0xab9423a7, 15)
++		STEP(I, b, c, d, a, GET(5), 0xfc93a039, 21)
++		STEP(I, a, b, c, d, GET(12), 0x655b59c3, 6)
++		STEP(I, d, a, b, c, GET(3), 0x8f0ccc92, 10)
++		STEP(I, c, d, a, b, GET(10), 0xffeff47d, 15)
++		STEP(I, b, c, d, a, GET(1), 0x85845dd1, 21)
++		STEP(I, a, b, c, d, GET(8), 0x6fa87e4f, 6)
++		STEP(I, d, a, b, c, GET(15), 0xfe2ce6e0, 10)
++		STEP(I, c, d, a, b, GET(6), 0xa3014314, 15)
++		STEP(I, b, c, d, a, GET(13), 0x4e0811a1, 21)
++		STEP(I, a, b, c, d, GET(4), 0xf7537e82, 6)
++		STEP(I, d, a, b, c, GET(11), 0xbd3af235, 10)
++		STEP(I, c, d, a, b, GET(2), 0x2ad7d2bb, 15)
++		STEP(I, b, c, d, a, GET(9), 0xeb86d391, 21)
++
++		a += saved_a;
++		b += saved_b;
++		c += saved_c;
++		d += saved_d;
++
++		ptr += 64;
++	} while (size -= 64);
++
++	ctx->a = a;
++	ctx->b = b;
++	ctx->c = c;
++	ctx->d = d;
++
++	return ptr;
++}
++
++void md5_begin(md5_ctx_t *ctx)
++{
++	ctx->a = 0x67452301;
++	ctx->b = 0xefcdab89;
++	ctx->c = 0x98badcfe;
++	ctx->d = 0x10325476;
++
++	ctx->lo = 0;
++	ctx->hi = 0;
++}
++
++void md5_hash(const void *data, size_t size, md5_ctx_t *ctx)
++{
++	uint32_t saved_lo;
++	unsigned long used, available;
++
++	saved_lo = ctx->lo;
++	if ((ctx->lo = (saved_lo + size) & 0x1fffffff) < saved_lo)
++		ctx->hi++;
++	ctx->hi += size >> 29;
++
++	used = saved_lo & 0x3f;
++
++	if (used) {
++		available = 64 - used;
++
++		if (size < available) {
++			memcpy(&ctx->buffer[used], data, size);
++			return;
++		}
++
++		memcpy(&ctx->buffer[used], data, available);
++		data = (const unsigned char *)data + available;
++		size -= available;
++		body(ctx, ctx->buffer, 64);
++	}
++
++	if (size >= 64) {
++		data = body(ctx, data, size & ~((size_t) 0x3f));
++		size &= 0x3f;
++	}
++
++	memcpy(ctx->buffer, data, size);
++}
++
++void md5_end(void *resbuf, md5_ctx_t *ctx)
++{
++	unsigned char *result = resbuf;
++	unsigned long used, available;
++
++	used = ctx->lo & 0x3f;
++
++	ctx->buffer[used++] = 0x80;
++
++	available = 64 - used;
++
++	if (available < 8) {
++		memset(&ctx->buffer[used], 0, available);
++		body(ctx, ctx->buffer, 64);
++		used = 0;
++		available = 64;
++	}
++
++	memset(&ctx->buffer[used], 0, available - 8);
++
++	ctx->lo <<= 3;
++	ctx->buffer[56] = ctx->lo;
++	ctx->buffer[57] = ctx->lo >> 8;
++	ctx->buffer[58] = ctx->lo >> 16;
++	ctx->buffer[59] = ctx->lo >> 24;
++	ctx->buffer[60] = ctx->hi;
++	ctx->buffer[61] = ctx->hi >> 8;
++	ctx->buffer[62] = ctx->hi >> 16;
++	ctx->buffer[63] = ctx->hi >> 24;
++
++	body(ctx, ctx->buffer, 64);
++
++	result[0] = ctx->a;
++	result[1] = ctx->a >> 8;
++	result[2] = ctx->a >> 16;
++	result[3] = ctx->a >> 24;
++	result[4] = ctx->b;
++	result[5] = ctx->b >> 8;
++	result[6] = ctx->b >> 16;
++	result[7] = ctx->b >> 24;
++	result[8] = ctx->c;
++	result[9] = ctx->c >> 8;
++	result[10] = ctx->c >> 16;
++	result[11] = ctx->c >> 24;
++	result[12] = ctx->d;
++	result[13] = ctx->d >> 8;
++	result[14] = ctx->d >> 16;
++	result[15] = ctx->d >> 24;
++
++	memset(ctx, 0, sizeof(*ctx));
++}
++
++int md5sum(const char *file, void *md5_buf)
++{
++	char buf[256];
++	md5_ctx_t ctx;
++	int ret = 0;
++	FILE *f;
++
++	f = fopen(file, "r");
++	if (!f)
++		return -1;
++
++	md5_begin(&ctx);
++	do {
++		int len = fread(buf, 1, sizeof(buf), f);
++		if (!len)
++			break;
++
++		md5_hash(buf, len, &ctx);
++		ret += len;
++	} while(1);
++
++	md5_end(md5_buf, &ctx);
++	fclose(f);
++
++	return ret;
++}
+--- /dev/null
++++ b/libfstools/md5.h
+@@ -0,0 +1,58 @@
++/*
++ * Copyright (C) 2014 Felix Fietkau <nbd@openwrt.org>
++ *
++ * Permission to use, copy, modify, and/or distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ */
++/*
++ * This is an OpenSSL-compatible implementation of the RSA Data Security, Inc.
++ * MD5 Message-Digest Algorithm (RFC 1321).
++ *
++ * Homepage:
++ * http://openwall.info/wiki/people/solar/software/public-domain-source-code/md5
++ *
++ * Author:
++ * Alexander Peslyak, better known as Solar Designer <solar at openwall.com>
++ *
++ * This software was written by Alexander Peslyak in 2001.  No copyright is
++ * claimed, and the software is hereby placed in the public domain.
++ * In case this attempt to disclaim copyright and place the software in the
++ * public domain is deemed null and void, then the software is
++ * Copyright (c) 2001 Alexander Peslyak and it is hereby released to the
++ * general public under the following terms:
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted.
++ *
++ * There's ABSOLUTELY NO WARRANTY, express or implied.
++ *
++ * See md5.c for more information.
++ */
++
++#ifndef _LIBUBOX_MD5_H
++#define _LIBUBOX_MD5_H
++
++#include <stdint.h>
++#include <stddef.h>
++
++typedef struct md5_ctx {
++	uint32_t lo, hi;
++	uint32_t a, b, c, d;
++	unsigned char buffer[64];
++} md5_ctx_t;
++
++extern void md5_begin(md5_ctx_t *ctx);
++extern void md5_hash(const void *data, size_t length, md5_ctx_t *ctx);
++extern void md5_end(void *resbuf, md5_ctx_t *ctx);
++int md5sum(const char *file, void *md5_buf);
++
++#endif
+--- /dev/null
++++ b/libfstools/compat.h
+@@ -0,0 +1,23 @@
++/* libfstools/compat.h */
++#pragma once
++
++#include <stddef.h>
++#include <stdint.h>
++#include <endian.h>
++#include <errno.h>
++#include "ulog.h"
++
++#if __BYTE_ORDER == __LITTLE_ENDIAN
++#define cpu_to_le32(x) ((uint32_t)(x))
++#define le32_to_cpu(x) ((uint32_t)(x))
++#define cpu_to_be32(x) __builtin_bswap32((uint32_t)(x))
++#define be32_to_cpu(x) __builtin_bswap32((uint32_t)(x))
++#define le64_to_cpu(x) ((uint64_t)(x))
++#else
++#define cpu_to_le32(x) __builtin_bswap32((uint32_t)(x))
++#define le32_to_cpu(x) __builtin_bswap32((uint32_t)(x))
++#define cpu_to_be32(x) ((uint32_t)(x))
++#define be32_to_cpu(x) ((uint32_t)(x))
++#define le64_to_cpu(x) __builtin_bswap64((uint64_t)(x))
++#endif
++
+--- /dev/null
++++ b/libfstools/list.h
+@@ -0,0 +1,228 @@
++/*-
++ * Copyright (c) 2011 Felix Fietkau <nbd@openwrt.org>
++ * Copyright (c) 2010 Isilon Systems, Inc.
++ * Copyright (c) 2010 iX Systems, Inc.
++ * Copyright (c) 2010 Panasas, Inc.
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice unmodified, this list of conditions, and the following
++ *    disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
++ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
++ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
++ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
++ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
++ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++#ifndef _LINUX_LIST_H_
++#define _LINUX_LIST_H_
++
++#include <stddef.h>
++#include <stdbool.h>
++
++#define	prefetch(x)
++
++#ifndef container_of
++#define container_of(ptr, type, member)					\
++	({								\
++		const __typeof__(((type *) NULL)->member) *__mptr = (ptr);	\
++		(type *) ((char *) __mptr - offsetof(type, member));	\
++	})
++#endif
++
++#ifndef container_of_safe
++#define container_of_safe(ptr, type, member)						\
++	({										\
++		const __typeof__(((type *) NULL)->member) *__mptr = (ptr);		\
++		__mptr ? (type *)((char *) __mptr - offsetof(type, member)) : NULL;	\
++	})
++#endif
++
++struct list_head {
++	struct list_head *next;
++	struct list_head *prev;
++};
++
++#define LIST_HEAD_INIT(name) { &(name), &(name) }
++#undef LIST_HEAD
++#define LIST_HEAD(name)	struct list_head name = LIST_HEAD_INIT(name)
++
++static inline void
++INIT_LIST_HEAD(struct list_head *list)
++{
++	list->next = list->prev = list;
++}
++
++static inline bool
++list_empty(const struct list_head *head)
++{
++	return (head->next == head);
++}
++
++static inline bool
++list_is_first(const struct list_head *list,
++	      const struct list_head *head)
++{
++	return list->prev == head;
++}
++
++static inline bool
++list_is_last(const struct list_head *list,
++	     const struct list_head *head)
++{
++	return list->next == head;
++}
++
++static inline void
++_list_del(struct list_head *entry)
++{
++	entry->next->prev = entry->prev;
++	entry->prev->next = entry->next;
++}
++
++static inline void
++list_del(struct list_head *entry)
++{
++	_list_del(entry);
++	entry->next = entry->prev = NULL;
++}
++
++static inline void
++_list_add(struct list_head *_new, struct list_head *prev,
++    struct list_head *next)
++{
++
++	next->prev = _new;
++	_new->next = next;
++	_new->prev = prev;
++	prev->next = _new;
++}
++
++static inline void
++list_del_init(struct list_head *entry)
++{
++	_list_del(entry);
++	INIT_LIST_HEAD(entry);
++}
++
++#define	list_entry(ptr, type, field)	container_of(ptr, type, field)
++#define	list_first_entry(ptr, type, field)	list_entry((ptr)->next, type, field)
++#define	list_last_entry(ptr, type, field)	list_entry((ptr)->prev, type, field)
++#define	list_next_entry(pos, member)		list_entry((pos)->member.next, typeof(*(pos)), member)
++#define	list_entry_is_h(p, h, field)		(&p->field == (h))
++
++#define	list_for_each(p, head)						\
++	for (p = (head)->next; p != (head); p = p->next)
++
++#define	list_for_each_safe(p, n, head)					\
++	for (p = (head)->next, n = p->next; p != (head); p = n, n = p->next)
++
++#define list_for_each_entry(p, h, field)				\
++	for (p = list_first_entry(h, __typeof__(*p), field); &p->field != (h); \
++	    p = list_entry(p->field.next, __typeof__(*p), field))
++
++#define list_for_each_entry_continue(p, h, field)			\
++	for (p = list_next_entry(p, field);				\
++	     !list_entry_is_h(p, h, field);				\
++	     p = list_next_entry(p, field))
++
++#define list_for_each_entry_continue_reverse(p, h, field)		\
++	for (p = list_prev_entry(p, field);				\
++	     !list_entry_is_h(p, h, field);				\
++	     p = list_prev_entry(p, field))
++
++#define list_for_each_entry_safe(p, n, h, field)			\
++	for (p = list_first_entry(h, __typeof__(*p), field),		\
++	    n = list_entry(p->field.next, __typeof__(*p), field); &p->field != (h);\
++	    p = n, n = list_entry(n->field.next, __typeof__(*n), field))
++
++#define	list_for_each_entry_reverse(p, h, field)			\
++	for (p = list_last_entry(h, __typeof__(*p), field); &p->field != (h); \
++	    p = list_entry(p->field.prev, __typeof__(*p), field))
++
++#define	list_for_each_prev(p, h) for (p = (h)->prev; p != (h); p = p->prev)
++#define	list_for_each_prev_safe(p, n, h) for (p = (h)->prev, n = p->prev; p != (h); p = n, n = p->prev)
++
++static inline void
++list_add(struct list_head *_new, struct list_head *head)
++{
++	_list_add(_new, head, head->next);
++}
++
++static inline void
++list_add_tail(struct list_head *_new, struct list_head *head)
++{
++	_list_add(_new, head->prev, head);
++}
++
++static inline void
++list_move(struct list_head *list, struct list_head *head)
++{
++	_list_del(list);
++	list_add(list, head);
++}
++
++static inline void
++list_move_tail(struct list_head *entry, struct list_head *head)
++{
++	_list_del(entry);
++	list_add_tail(entry, head);
++}
++
++static inline void
++_list_splice(const struct list_head *list, struct list_head *prev,
++    struct list_head *next)
++{
++	struct list_head *first;
++	struct list_head *last;
++
++	if (list_empty(list))
++		return;
++
++	first = list->next;
++	last = list->prev;
++	first->prev = prev;
++	prev->next = first;
++	last->next = next;
++	next->prev = last;
++}
++
++static inline void
++list_splice(const struct list_head *list, struct list_head *head)
++{
++	_list_splice(list, head, head->next);
++}
++
++static inline void
++list_splice_tail(struct list_head *list, struct list_head *head)
++{
++	_list_splice(list, head->prev, head);
++}
++
++static inline void
++list_splice_init(struct list_head *list, struct list_head *head)
++{
++	_list_splice(list, head, head->next);
++	INIT_LIST_HEAD(list);
++}
++
++static inline void
++list_splice_tail_init(struct list_head *list, struct list_head *head)
++{
++	_list_splice(list, head->prev, head);
++	INIT_LIST_HEAD(list);
++}
++
++#endif /* _LINUX_LIST_H_ */
+--- /dev/null
++++ b/libfstools/ulog.h
+@@ -0,0 +1,51 @@
++/*
++ * ulog - simple logging functions
++ *
++ * Copyright (C) 2015 Jo-Philipp Wich <jow@openwrt.org>
++ *
++ * Permission to use, copy, modify, and/or distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ */
++
++#ifndef __LIBUBOX_ULOG_H
++#define __LIBUBOX_ULOG_H
++
++#include <syslog.h>
++
++//#include "udebug.h"
++
++enum {
++	ULOG_KMSG   = (1 << 0),
++	ULOG_SYSLOG = (1 << 1),
++	ULOG_STDIO  = (1 << 2)
++};
++/*
++void ulog_open(int channels, int facility, const char *ident);
++void ulog_udebug(struct udebug_buf *udb);void ulog_close(void);
++
++void ulog_threshold(int threshold);
++
++void ulog(int priority, const char *fmt, ...)
++	__attribute__ ((format (printf, 2, 3)));
++
++#define ULOG_INFO(fmt, ...) ulog(LOG_INFO, fmt, ## __VA_ARGS__)
++#define ULOG_NOTE(fmt, ...) ulog(LOG_NOTICE, fmt, ## __VA_ARGS__)
++#define ULOG_WARN(fmt, ...) ulog(LOG_WARNING, fmt, ## __VA_ARGS__)
++#define ULOG_ERR(fmt, ...) ulog(LOG_ERR, fmt, ## __VA_ARGS__)
++*/
++
++#define ULOG_ERR(fmt, ...)  fprintf(stderr, fmt, ##__VA_ARGS__)
++#define ULOG_WARN(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
++#define ULOG_NOTE(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
++#define ULOG_INFO(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
++
++#endif
+--- /dev/null
++++ b/libfstools/utils.c
+@@ -0,0 +1,189 @@
++/*
++ * utils - misc libubox utility functions
++ *
++ * Copyright (C) 2012 Felix Fietkau <nbd@openwrt.org>
++ *
++ * Permission to use, copy, modify, and/or distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ */
++
++#include <sys/mman.h>
++#include <errno.h>
++#include <stdarg.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include "utils.h"
++
++#define foreach_arg(_arg, _addr, _len, _first_addr, _first_len) \
++	for (_addr = (_first_addr), _len = (_first_len); \
++		_addr; \
++		_addr = va_arg(_arg, void **), _len = _addr ? va_arg(_arg, size_t) : 0)
++
++#define C_PTR_ALIGN	(sizeof(size_t))
++#define C_PTR_MASK	(-C_PTR_ALIGN)
++
++void *__calloc_a(size_t len, ...)
++{
++	va_list ap, ap1;
++	void *ret;
++	void **cur_addr;
++	size_t cur_len;
++	int alloc_len = 0;
++	char *ptr;
++
++	va_start(ap, len);
++
++	va_copy(ap1, ap);
++	foreach_arg(ap1, cur_addr, cur_len, &ret, len)
++		alloc_len += (cur_len + C_PTR_ALIGN - 1 ) & C_PTR_MASK;
++	va_end(ap1);
++
++	ptr = calloc(1, alloc_len);
++	if (!ptr) {
++		va_end(ap);
++		return NULL;
++	}
++
++	alloc_len = 0;
++	foreach_arg(ap, cur_addr, cur_len, &ret, len) {
++		*cur_addr = &ptr[alloc_len];
++		alloc_len += (cur_len + C_PTR_ALIGN - 1) & C_PTR_MASK;
++	}
++	va_end(ap);
++
++	return ret;
++}
++
++#ifdef LIBUBOX_COMPAT_CLOCK_GETTIME
++#include <mach/mach_host.h>		/* host_get_clock_service() */
++#include <mach/mach_port.h>		/* mach_port_deallocate() */
++#include <mach/mach_init.h>		/* mach_host_self(), mach_task_self() */
++#include <mach/clock.h>			/* clock_get_time() */
++
++static clock_serv_t clock_realtime;
++static clock_serv_t clock_monotonic;
++
++static void __constructor clock_name_init(void)
++{
++	mach_port_t host_self = mach_host_self();
++
++	host_get_clock_service(host_self, CLOCK_REALTIME, &clock_realtime);
++	host_get_clock_service(host_self, CLOCK_MONOTONIC, &clock_monotonic);
++}
++
++static void __destructor clock_name_dealloc(void)
++{
++	mach_port_t self = mach_task_self();
++
++	mach_port_deallocate(self, clock_realtime);
++	mach_port_deallocate(self, clock_monotonic);
++}
++
++int clock_gettime(int type, struct timespec *tv)
++{
++	int retval = -1;
++	mach_timespec_t mts;
++
++	switch (type) {
++		case CLOCK_REALTIME:
++			retval = clock_get_time(clock_realtime, &mts);
++			break;
++		case CLOCK_MONOTONIC:
++			retval = clock_get_time(clock_monotonic, &mts);
++			break;
++		default:
++			goto out;
++	}
++
++	tv->tv_sec = mts.tv_sec;
++	tv->tv_nsec = mts.tv_nsec;
++out:
++	return retval;
++}
++
++#endif
++
++void *cbuf_alloc(unsigned int order)
++{
++	char path[] = "/tmp/cbuf-XXXXXX";
++	unsigned long size = cbuf_size(order);
++	void *ret = NULL;
++	int fd;
++
++	fd = mkstemp(path);
++	if (fd < 0)
++		return NULL;
++
++	if (unlink(path))
++		goto close;
++
++	if (ftruncate(fd, cbuf_size(order)))
++		goto close;
++
++#ifndef MAP_ANONYMOUS
++#define MAP_ANONYMOUS MAP_ANON
++#endif
++
++	ret = mmap(NULL, size * 2, PROT_NONE, MAP_ANON | MAP_PRIVATE, -1, 0);
++	if (ret == MAP_FAILED) {
++		ret = NULL;
++		goto close;
++	}
++
++	if (mmap(ret, size, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_SHARED,
++		 fd, 0) != ret ||
++	    mmap(ret + size, size, PROT_READ | PROT_WRITE,
++		 MAP_FIXED | MAP_SHARED, fd, 0) != ret + size) {
++		munmap(ret, size * 2);
++		ret = NULL;
++	}
++
++close:
++	close(fd);
++	return ret;
++}
++
++void cbuf_free(void *ptr, unsigned int order)
++{
++	munmap(ptr, cbuf_size(order) * 2);
++}
++
++int mkdir_p(char *dir, mode_t mask)
++{
++	char *l;
++	int ret;
++
++	ret = mkdir(dir, mask);
++	if (!ret || errno == EEXIST)
++		return 0;
++
++	if (ret && (errno != ENOENT))
++		return -1;
++
++	l = strrchr(dir, '/');
++	if (!l || l == dir)
++		return -1;
++
++	*l = '\0';
++
++	if (mkdir_p(dir, mask))
++		return -1;
++
++	*l = '/';
++
++	ret = mkdir(dir, mask);
++	if (!ret || errno == EEXIST)
++		return 0;
++	else
++		return -1;
++}
+--- /dev/null
++++ b/libfstools/utils.h
+@@ -0,0 +1,270 @@
++/*
++ * utils - misc libubox utility functions
++ *
++ * Copyright (C) 2012 Felix Fietkau <nbd@openwrt.org>
++ *
++ * Permission to use, copy, modify, and/or distribute this software for any
++ * purpose with or without fee is hereby granted, provided that the above
++ * copyright notice and this permission notice appear in all copies.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
++ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
++ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
++ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
++ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
++ */
++
++#ifndef __LIBUBOX_UTILS_H
++#define __LIBUBOX_UTILS_H
++
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <sys/time.h>
++#include <stdint.h>
++#include <stdbool.h>
++#include <unistd.h>
++#include <time.h>
++
++/*
++ * calloc_a(size_t len, [void **addr, size_t len,...], NULL)
++ *
++ * allocate a block of memory big enough to hold multiple aligned objects.
++ * the pointer to the full object (starting with the first chunk) is returned,
++ * all other pointers are stored in the locations behind extra addr arguments.
++ * the last argument needs to be a NULL pointer
++ */
++
++#define calloc_a(len, ...) __calloc_a(len, ##__VA_ARGS__, NULL)
++
++void *__calloc_a(size_t len, ...);
++
++#ifndef ARRAY_SIZE
++#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
++#endif
++
++#define __BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
++
++#ifdef __OPTIMIZE__
++extern int __BUILD_BUG_ON_CONDITION_FAILED;
++#define BUILD_BUG_ON(condition)					\
++	do {							\
++		__BUILD_BUG_ON(condition);			\
++		if (condition)					\
++			__BUILD_BUG_ON_CONDITION_FAILED = 1;	\
++	} while(0)
++#else
++#define BUILD_BUG_ON __BUILD_BUG_ON
++#endif
++
++#if defined(__APPLE__) && !defined(CLOCK_MONOTONIC)
++#define LIBUBOX_COMPAT_CLOCK_GETTIME
++
++#include <mach/clock_types.h>
++#define CLOCK_REALTIME	CALENDAR_CLOCK
++#define CLOCK_MONOTONIC	SYSTEM_CLOCK
++
++int clock_gettime(int type, struct timespec *tv);
++
++#endif
++
++#ifdef __GNUC__
++#define _GNUC_MIN_VER(maj, min) (((__GNUC__ << 8) + __GNUC_MINOR__) >= (((maj) << 8) + (min)))
++#else
++#define _GNUC_MIN_VER(maj, min) 0
++#endif
++
++#if defined(__linux__) || defined(__CYGWIN__)
++#include <byteswap.h>
++#include <endian.h>
++
++#elif defined(__APPLE__)
++#include <machine/endian.h>
++#include <machine/byte_order.h>
++#elif defined(__FreeBSD__)
++#include <sys/endian.h>
++#else
++#include <machine/endian.h>
++#endif
++
++#ifndef __BYTE_ORDER
++#define __BYTE_ORDER BYTE_ORDER
++#endif
++#ifndef __BIG_ENDIAN
++#define __BIG_ENDIAN BIG_ENDIAN
++#endif
++#ifndef __LITTLE_ENDIAN
++#define __LITTLE_ENDIAN LITTLE_ENDIAN
++#endif
++
++#define __constant_swap16(x) ((uint16_t)(				\
++	(((uint16_t)(x) & (uint16_t)0x00ffU) << 8) |			\
++	(((uint16_t)(x) & (uint16_t)0xff00U) >> 8)))
++
++#define __constant_swap32(x) ((uint32_t)(				\
++	(((uint32_t)(x) & (uint32_t)0x000000ffUL) << 24) |		\
++	(((uint32_t)(x) & (uint32_t)0x0000ff00UL) <<  8) |		\
++	(((uint32_t)(x) & (uint32_t)0x00ff0000UL) >>  8) |		\
++	(((uint32_t)(x) & (uint32_t)0xff000000UL) >> 24)))
++
++#define __constant_swap64(x) ((uint64_t)(				\
++	(((uint64_t)(x) & (uint64_t)0x00000000000000ffULL) << 56) |	\
++	(((uint64_t)(x) & (uint64_t)0x000000000000ff00ULL) << 40) |	\
++	(((uint64_t)(x) & (uint64_t)0x0000000000ff0000ULL) << 24) |	\
++	(((uint64_t)(x) & (uint64_t)0x00000000ff000000ULL) <<  8) |	\
++	(((uint64_t)(x) & (uint64_t)0x000000ff00000000ULL) >>  8) |	\
++	(((uint64_t)(x) & (uint64_t)0x0000ff0000000000ULL) >> 24) |	\
++	(((uint64_t)(x) & (uint64_t)0x00ff000000000000ULL) >> 40) |	\
++	(((uint64_t)(x) & (uint64_t)0xff00000000000000ULL) >> 56)))
++
++/*
++ * This returns a constant expression while determining if an argument is
++ * a constant expression, most importantly without evaluating the argument.
++ */
++#define __is_constant(x)						\
++	(sizeof(int) == sizeof(*(1 ? ((void*)((long)(x) * 0l)) : (int*)1)))
++
++#define __eval_once(func, x)						\
++	({ __typeof__(x) __x = x; func(__x); })
++
++#ifdef __cplusplus
++/*
++ * g++ does not support __builtin_choose_expr, so always use __eval_once.
++ * Unfortunately this means that the byte order functions can't be used
++ * as a constant expression anymore
++ */
++#define __eval_safe(func, x) __eval_once(func, x)
++#else
++#define __eval_safe(func, x)						\
++	__builtin_choose_expr(__is_constant(x),				\
++			      func(x), __eval_once(func, x))
++#endif
++
++#if __BYTE_ORDER == __LITTLE_ENDIAN
++
++#define const_cpu_to_be64(x) __constant_swap64(x)
++#define const_cpu_to_be32(x) __constant_swap32(x)
++#define const_cpu_to_be16(x) __constant_swap16(x)
++
++#define const_be64_to_cpu(x) __constant_swap64(x)
++#define const_be32_to_cpu(x) __constant_swap32(x)
++#define const_be16_to_cpu(x) __constant_swap16(x)
++
++#define const_cpu_to_le64(x) (x)
++#define const_cpu_to_le32(x) (x)
++#define const_cpu_to_le16(x) (x)
++
++#define const_le64_to_cpu(x) (x)
++#define const_le32_to_cpu(x) (x)
++#define const_le16_to_cpu(x) (x)
++
++#define cpu_to_be64(x) __eval_safe(__constant_swap64, x)
++#define cpu_to_be32(x) __eval_safe(__constant_swap32, x)
++#define cpu_to_be16(x) __eval_safe(__constant_swap16, x)
++
++#define be64_to_cpu(x) __eval_safe(__constant_swap64, x)
++#define be32_to_cpu(x) __eval_safe(__constant_swap32, x)
++#define be16_to_cpu(x) __eval_safe(__constant_swap16, x)
++
++#define cpu_to_le64(x) (x)
++#define cpu_to_le32(x) (x)
++#define cpu_to_le16(x) (x)
++
++#define le64_to_cpu(x) (x)
++#define le32_to_cpu(x) (x)
++#define le16_to_cpu(x) (x)
++
++#else /* __BYTE_ORDER == __LITTLE_ENDIAN */
++
++#define const_cpu_to_le64(x) __constant_swap64(x)
++#define const_cpu_to_le32(x) __constant_swap32(x)
++#define const_cpu_to_le16(x) __constant_swap16(x)
++
++#define const_le64_to_cpu(x) __constant_swap64(x)
++#define const_le32_to_cpu(x) __constant_swap32(x)
++#define const_le16_to_cpu(x) __constant_swap16(x)
++
++#define const_cpu_to_be64(x) (x)
++#define const_cpu_to_be32(x) (x)
++#define const_cpu_to_be16(x) (x)
++
++#define const_be64_to_cpu(x) (x)
++#define const_be32_to_cpu(x) (x)
++#define const_be16_to_cpu(x) (x)
++
++#define cpu_to_le64(x) __eval_safe(__constant_swap64, x)
++#define cpu_to_le32(x) __eval_safe(__constant_swap32, x)
++#define cpu_to_le16(x) __eval_safe(__constant_swap16, x)
++
++#define le64_to_cpu(x) __eval_safe(__constant_swap64, x)
++#define le32_to_cpu(x) __eval_safe(__constant_swap32, x)
++#define le16_to_cpu(x) __eval_safe(__constant_swap16, x)
++
++#define cpu_to_be64(x) (x)
++#define cpu_to_be32(x) (x)
++#define cpu_to_be16(x) (x)
++
++#define be64_to_cpu(x) (x)
++#define be32_to_cpu(x) (x)
++#define be16_to_cpu(x) (x)
++
++#endif
++
++#ifndef __packed
++#define __packed __attribute__((packed))
++#endif
++
++#ifndef __constructor
++#define __constructor __attribute__((constructor))
++#endif
++
++#ifndef __destructor
++#define __destructor __attribute__((destructor))
++#endif
++
++#ifndef __hidden
++#define __hidden __attribute__((visibility("hidden")))
++#endif
++
++#ifndef __has_attribute
++# define __has_attribute(x) 0
++#endif
++
++#ifndef fallthrough
++# if __has_attribute(__fallthrough__)
++#  define fallthrough __attribute__((__fallthrough__))
++# else
++#  define fallthrough do {} while (0)  /* fallthrough */
++# endif
++#endif
++
++int b64_encode(const void *src, size_t src_len,
++	       void *dest, size_t dest_len);
++
++int b64_decode(const void *src, void *dest, size_t dest_len);
++
++#define B64_ENCODE_LEN(_len)	((((_len) + 2) / 3) * 4 + 1)
++#define B64_DECODE_LEN(_len)	(((_len) / 4) * 3 + 1)
++
++static inline unsigned int cbuf_order(unsigned int x)
++{
++	return 32 - __builtin_clz(x - 1);
++}
++
++static inline unsigned long cbuf_size(int order)
++{
++	unsigned long page_size = sysconf(_SC_PAGESIZE);
++	unsigned long ret = 1ULL << order;
++
++	if (ret < page_size)
++		ret = page_size;
++
++	return ret;
++}
++
++void *cbuf_alloc(unsigned int order);
++void cbuf_free(void *ptr, unsigned int order);
++int mkdir_p(char *dir, mode_t mask);
++
++#endif

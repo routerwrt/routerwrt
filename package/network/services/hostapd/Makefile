@@ -89,10 +89,8 @@ ifneq ($(LOCAL_VARIANT),mini)
 endif
 
 
-CORE_DEPENDS = +ucode +libucode \
-	+ucode-mod-fs +ucode-mod-nl80211 +ucode-mod-rtnl +ucode-mod-ubus +ucode-mod-uloop \
-	+libubus +libblobmsg-json \
-	+libudebug
+CORE_DEPENDS =
+
 OPENSSL_DEPENDS = +PACKAGE_$(1):libopenssl +PACKAGE_$(1):libopenssl-legacy
 
 DRIVER_MAKEOPTS= \
@@ -101,7 +99,6 @@ DRIVER_MAKEOPTS= \
 	CONFIG_IEEE80211AX=$(HOSTAPD_IEEE80211AX) \
 	CONFIG_IEEE80211BE=$(HOSTAPD_IEEE80211BE) \
 	CONFIG_MBO=$(CONFIG_WPA_MBO_SUPPORT) \
-	CONFIG_UCODE=y CONFIG_APUP=y \
 	$(if $(HOSTAPD_IEEE80211BE),CONFIG_OCV=y)
 
 
@@ -603,7 +600,7 @@ TARGET_CPPFLAGS := \
 	-D_GNU_SOURCE \
 	$(if $(CONFIG_WPA_MSG_MIN_PRIORITY),-DCONFIG_MSG_MIN_PRIORITY=$(CONFIG_WPA_MSG_MIN_PRIORITY))
 
-TARGET_LDFLAGS += -lubox -lubus -lblobmsg_json -lucode -lm -lnl-tiny -ludebug
+TARGET_LDFLAGS += -lm -lnl-tiny
 
 ifdef CONFIG_WPA_ENABLE_WEP
     DRIVER_MAKEOPTS += CONFIG_WEP=y
@@ -718,26 +715,15 @@ endif
 
 define Install/hostapd
 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/usr/share/hostap
-	$(INSTALL_DATA) ./files/hostapd.uc $(1)/usr/share/hostap/
 	$(if $(findstring full,$(CONFIG_VARIANT)),$(Install/hostapd/full))
 endef
 
 define Install/supplicant
 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/usr/share/hostap
-	$(INSTALL_DATA) ./files/wpa_supplicant.uc $(1)/usr/share/hostap/
 endef
 
 define Package/hostapd-common/install
-	$(INSTALL_DIR) \
-	  $(1)/etc/capabilities \
-	  $(1)/etc/hotplug.d/ieee80211 \
-	  $(1)/etc/init.d $(1)/lib/netifd \
-	  $(1)/usr/share/acl.d \
-	  $(1)/usr/share/hostap
-	$(INSTALL_BIN) ./files/dhcp-get-server.sh $(1)/lib/netifd/dhcp-get-server.sh
-	$(INSTALL_BIN) ./files/wpad.init $(1)/etc/init.d/wpad
-	$(INSTALL_DATA) ./files/wpad_acl.json $(1)/usr/share/acl.d
-	$(INSTALL_DATA) ./files/wpad.json $(1)/etc/capabilities
+# no hostapd-common needed
 endef
 
 define Package/hostapd/install
