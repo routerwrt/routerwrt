@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config NET_DSA_RALINK
+	tristate "Ralink ESW Switch support"
+	depends on HAS_IOMEM
+	depends on NET_DSA
+	select NET_DSA_TAG_RALINK
+	help
+	  This driver adds support for Ralink ESW switches.

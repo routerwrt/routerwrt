@@ -1,0 +1,80 @@
+--- a/include/net/dsa.h
++++ b/include/net/dsa.h
+@@ -59,6 +59,7 @@ struct tc_action;
+ #define DSA_TAG_PROTO_MXL_GSW1XX_VALUE		31
+ #define DSA_TAG_PROTO_MXL862_VALUE		32
+ #define DSA_TAG_PROTO_NETC_VALUE		33
++#define DSA_TAG_PROTO_RALINK_VALUE		34
+ 
+ enum dsa_tag_protocol {
+ 	DSA_TAG_PROTO_NONE		= DSA_TAG_PROTO_NONE_VALUE,
+@@ -95,6 +96,7 @@ enum dsa_tag_protocol {
+ 	DSA_TAG_PROTO_MXL_GSW1XX	= DSA_TAG_PROTO_MXL_GSW1XX_VALUE,
+ 	DSA_TAG_PROTO_MXL862		= DSA_TAG_PROTO_MXL862_VALUE,
+ 	DSA_TAG_PROTO_NETC		= DSA_TAG_PROTO_NETC_VALUE,
++	DSA_TAG_PROTO_RALINK		= DSA_TAG_PROTO_RALINK_VALUE,
+ };
+ 
+ struct dsa_switch;
+--- a/net/dsa/Kconfig
++++ b/net/dsa/Kconfig
+@@ -221,4 +221,11 @@ config NET_DSA_TAG_YT921X
+ 	  Say Y or M if you want to enable support for tagging frames for
+ 	  Motorcomm YT921x switches.
+ 
++
++config NET_DSA_TAG_RALINK
++        tristate "Tag driver for RALINK switches"
++        help
++          Say Y or M if you want to enable support for tagging frames for
++          RALINK ESW / GSW  switches that use TPID 0x81xx tagging.
++
+ endif
+--- a/net/dsa/Makefile
++++ b/net/dsa/Makefile
+@@ -43,6 +43,7 @@ obj-$(CONFIG_NET_DSA_TAG_TRAILER) += tag
+ obj-$(CONFIG_NET_DSA_TAG_VSC73XX_8021Q) += tag_vsc73xx_8021q.o
+ obj-$(CONFIG_NET_DSA_TAG_XRS700X) += tag_xrs700x.o
+ obj-$(CONFIG_NET_DSA_TAG_YT921X) += tag_yt921x.o
++obj-$(CONFIG_NET_DSA_TAG_RALINK) += tag_ralink.o
+ 
+ # for tracing framework to find trace.h
+ CFLAGS_trace.o := -I$(src)
+--- a/drivers/net/ethernet/Kconfig
++++ b/drivers/net/ethernet/Kconfig
+@@ -162,6 +162,7 @@ source "drivers/net/ethernet/pensando/Kc
+ source "drivers/net/ethernet/qlogic/Kconfig"
+ source "drivers/net/ethernet/brocade/Kconfig"
+ source "drivers/net/ethernet/qualcomm/Kconfig"
++source "drivers/net/ethernet/ralink/Kconfig"
+ source "drivers/net/ethernet/rdc/Kconfig"
+ source "drivers/net/ethernet/realtek/Kconfig"
+ source "drivers/net/ethernet/renesas/Kconfig"
+--- a/drivers/net/ethernet/Makefile
++++ b/drivers/net/ethernet/Makefile
+@@ -76,6 +76,7 @@ obj-$(CONFIG_ETHOC) += ethoc.o
+ obj-$(CONFIG_NET_VENDOR_PASEMI) += pasemi/
+ obj-$(CONFIG_NET_VENDOR_QLOGIC) += qlogic/
+ obj-$(CONFIG_NET_VENDOR_QUALCOMM) += qualcomm/
++obj-$(CONFIG_NET_VENDOR_RALINK) += ralink/
+ obj-$(CONFIG_NET_VENDOR_REALTEK) += realtek/
+ obj-$(CONFIG_NET_VENDOR_RENESAS) += renesas/
+ obj-$(CONFIG_NET_VENDOR_RDC) += rdc/
+--- a/drivers/net/dsa/Kconfig
++++ b/drivers/net/dsa/Kconfig
+@@ -88,6 +88,8 @@ source "drivers/net/dsa/xrs700x/Kconfig"
+ 
+ source "drivers/net/dsa/realtek/Kconfig"
+ 
++source "drivers/net/dsa/ralink/Kconfig"
++
+ config NET_DSA_RZN1_A5PSW
+ 	tristate "Renesas RZ/N1 A5PSW Ethernet switch support"
+ 	depends on OF && (ARCH_RZN1 || COMPILE_TEST)
+--- a/drivers/net/dsa/Makefile
++++ b/drivers/net/dsa/Makefile
+@@ -27,3 +27,4 @@ obj-y				+= qca/
+ obj-y				+= realtek/
+ obj-y				+= sja1105/
+ obj-y				+= xrs700x/
++obj-y				+= ralink/
