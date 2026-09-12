@@ -1,1 +1,17 @@
+::sysinit:/bin/mount -t proc proc /proc
+::sysinit:/bin/mount -t sysfs sysfs /sys
+::sysinit:/bin/mount -t tmpfs tmpfs /tmp
+::sysinit:/bin/mkdir -p /dev/pts
+::sysinit:/bin/mount -t devpts devpts /dev/pts
+
+::sysinit:/bin/sh -c 'PREINIT=1 /sbin/mount_root start'
+::sysinit:/bin/sh -c 'PREINIT=1 /sbin/mount_root done'
+
+::sysinit:/sbin/boot_run
+
+::respawn:/usr/bin/runsvdir /var/service
+
 ttyS0::askfirst:/bin/ash
+
+::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r

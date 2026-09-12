@@ -174,9 +174,6 @@
 	pinctrl: pinctrl {
 		compatible = "ralink,rt2880-pinmux";
 
-		pinctrl-names = "default";
-		pinctrl-0 = <&state_default>;
-
 		state_default: pinctrl0 {
 			sdram {
 				groups = "sdram";
@@ -215,11 +212,8 @@
 	};
 
 	ethernet: ethernet@400000 {
-		compatible = "ralink,rt2880-eth";
+		compatible = "ralink,rt2880-fe";
 		reg = <0x00400000 0x10000>;
-
-		#address-cells = <1>;
-		#size-cells = <0>;
 
 		clocks = <&sysc RT2880_CLK_ETHERNET>;
 
@@ -231,15 +225,14 @@
 
 		status = "disabled";
 
-		port@0 {
-			compatible = "mediatek,eth-port";
+		gmac0: port@0 {
 			reg = <0>;
+			status = "disabled";
 		};
 
-		mdio-bus {
+		mdio: mdio {
 			#address-cells = <1>;
 			#size-cells = <0>;
-
 			status = "disabled";
 		};
 	};

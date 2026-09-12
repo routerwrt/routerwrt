@@ -1,0 +1,26 @@
+#!/bin/sh
+
+ROOT="${1:-}"
+DIR="$ROOT/usr/share/routerwrt/apps.d"
+OUT="$ROOT/www/apps.js"
+
+mkdir -p "$DIR"
+mkdir -p "$ROOT/www"
+
+{
+    printf 'export const apps = [\n'
+
+    first=1
+
+    for f in "$DIR"/*; do
+        [ -f "$f" ] || continue
+
+        [ "$first" = 1 ] || printf ',\n'
+        cat "$f"
+        first=0
+    done
+
+    printf '\n];\n'
+} > "$OUT.tmp" || exit 1
+
+mv "$OUT.tmp" "$OUT"

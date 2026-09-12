@@ -1,0 +1,4 @@
+#!/bin/sh
+
+ip link set wan up
+exec udhcpc -f -i wan -s /usr/libexec/udhcpc-script

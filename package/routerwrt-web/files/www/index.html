@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>RouterWRT</title>
+
+<link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<div class="layout">
+
+  <aside class="sidebar">
+
+    <h1>📡 RouterWRT</h1>
+
+    <!--
+      core.js populates this from apps.js
+    -->
+    <nav id="app-nav"></nav>
+
+    <div class="theme-box">
+      <label for="theme">Theme</label>
+
+      <select id="theme">
+        <option value="auto">Auto</option>
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </div>
+
+  </aside>
+
+
+  <main>
+
+    <header class="topbar">
+      <div>
+        <strong>RT305x</strong>
+        <span class="muted">
+          • RouterWRT prototype
+        </span>
+      </div>
+    </header>
+
+
+    <!--
+      Main dashboard.
+
+      core.js shows this for #/
+      and hides it when an app is opened.
+    -->
+    <section
+      id="dashboard"
+      class="dashboard"
+    >
+
+      <article class="card">
+
+        <h2>⚡ CPU Load</h2>
+
+        <div
+          class="bigstat"
+          id="cpu-load"
+        >
+          --
+        </div>
+
+        <div class="meter">
+          <div
+            class="meter-fill"
+            id="cpu-bar"
+          ></div>
+        </div>
+
+      </article>
+
+
+      <article class="card">
+
+        <h2>💾 Memory</h2>
+
+        <div
+          class="bigstat"
+          id="mem-use"
+        >
+          --
+        </div>
+
+        <div class="meter">
+          <div
+            class="meter-fill"
+            id="mem-bar"
+          ></div>
+        </div>
+
+      </article>
+
+
+      <article class="card">
+
+        <h2>🌐 Network</h2>
+
+        <div class="statline">
+          <span>LAN</span>
+          <span class="ok">UP</span>
+        </div>
+
+        <div class="statline">
+          <span>WAN</span>
+          <span class="ok">DHCP</span>
+        </div>
+
+        <div class="statline">
+          <span>WiFi</span>
+          <span class="ok">AP</span>
+        </div>
+
+      </article>
+
+
+      <article class="card apps-widget">
+
+        <h2>🧩 Apps</h2>
+
+        <!--
+          core.js populates this from apps.js
+        -->
+        <div
+          id="apps-grid"
+          class="app-grid"
+        ></div>
+
+      </article>
+
+    </section>
+
+
+    <!--
+      App pages are rendered here.
+
+      firmware/page.js
+      logs/page.js
+      usb/page.js
+      etc.
+    -->
+    <section
+      id="content"
+      hidden
+    ></section>
+
+  </main>
+
+</div>
+
+
+<script>
+/*
+ * Dashboard status.
+ *
+ * This remains core functionality for now.
+ */
+
+async function refreshStatus() {
+  try {
+    const response = await fetch(
+      "/cgi-bin/status.sh?_=" + Date.now()
+    );
+
+    if (!response.ok)
+      throw new Error(
+        "HTTP " + response.status
+      );
+
+    const data =
+      await response.json();
+
+
+    /*
+     * Load average
+     */
+    document
+      .getElementById("cpu-load")
+      .textContent =
+        Number(data.load1).toFixed(2);
+
+
+    /*
+     * This isn't technically CPU percentage.
+     *
+     * For our simple dashboard meter,
+     * load 1.00 == 100%.
+     *
+     * Fine for a single-core RT305x.
+     */
+    const cpuPct =
+      Math.min(
+        100,
+        Number(data.load1) * 100
+      );
+
+    document
+      .getElementById("cpu-bar")
+      .style.width =
+        cpuPct + "%";
+
+
+    /*
+     * Memory
+     */
+    document
+      .getElementById("mem-use")
+      .textContent =
+        data.mem_used + "%";
+
+    document
+      .getElementById("mem-bar")
+      .style.width =
+        data.mem_used + "%";
+
+  } catch (error) {
+    console.log(
+      "status update failed:",
+      error
+    );
+  }
+}
+
+
+/*
+ * Initial status + periodic update.
+ */
+refreshStatus();
+
+setInterval(
+  refreshStatus,
+  3000
+);
+</script>
+
+
+<!--
+  RouterWRT frontend engine.
+
+  core.js imports apps.js automatically.
+-->
+<script
+  type="module"
+  src="/core.js"
+></script>
+
+</body>
+</html>

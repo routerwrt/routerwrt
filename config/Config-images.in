@@ -372,4 +372,12 @@ menu "Target Images"
 		  across reboots. When enabled, /var/run will still be linked
 		  to /tmp/run.
 
+	config STRIP_APK_METADATA
+                bool "Strip APK metadata from target rootfs"
+                default n
+                help
+                  Remove /lib/apk metadata from the final image.
+                  Intended for tiny appliance-style images without on-device
+                  package management or package-preserving sysupgrade.
+
 endmenu

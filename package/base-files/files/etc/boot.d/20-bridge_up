@@ -1,0 +1,20 @@
+#!/bin/sh
+
+WAN=wan
+BR=br0
+LAN_PORTS="lan1 lan2 lan3 lan4"
+
+# loopback
+ip link set lo up
+
+# bridge
+ip link add name "$BR" type bridge 2>/dev/null
+
+for p in $LAN_PORTS; do
+	ip link set "$p" up
+	ip link set "$p" master "$BR"
+done
+
+ip addr flush dev "$BR"
+ip addr add 192.168.1.1/24 dev "$BR"
+ip link set "$BR" up

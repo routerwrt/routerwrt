@@ -1,0 +1,19 @@
+#!/bin/sh
+
+case "$1" in
+	bound|renew)
+		ip addr flush dev "$interface"
+		ip addr add "$ip/${subnet:-24}" dev "$interface"
+
+		[ -n "$router" ] &&
+			ip route replace default via "$router" dev "$interface"
+
+		: > /tmp/resolv.conf
+		for server in $dns; do
+			echo "nameserver $server" >> /tmp/resolv.conf
+		done
+		;;
+	deconfig)
+		ip addr flush dev "$interface"
+		;;
+esac

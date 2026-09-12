@@ -38,14 +38,12 @@
 				reg = <0x30000 0x10000>;
 				read-only;
 
-				nvmem-layout {
-					compatible = "fixed-layout";
-					#address-cells = <1>;
-					#size-cells = <1>;
+				compatible = "nvmem-cells";
+				#address-cells = <1>;
+				#size-cells = <1>;
 
-					eeprom_devdata_4000: eeprom@4000 {
-						reg = <0x4000 0x200>;
-					};
+				eeprom_devdata_4000: eeprom@4000 {
+				reg = <0x4000 0x200>;
 				};
 			};
 
@@ -116,12 +114,51 @@
 };
 
 &esw {
-	mediatek,portmap = <0x2f>;
+	ports {
+		port@0 { label = "lan4"; };
+		port@1 { label = "lan3"; };		
+		port@2 { label = "lan2"; };
+		port@3 { label = "lan1"; };
+		port@4 { label = "wan"; };
+	};
+
+	leds {
+		led@0 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_WAN;
+			function-enumerator = <0>;
+		};
+
+		led@1 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <1>;
+		};
+
+		led@2 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <2>;
+		};
+
+		led@3 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <3>;
+		};
+
+		led@4 {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <4>;
+		};
+	};
 };
 
 &wmac {
 	nvmem-cells = <&eeprom_devdata_4000>;
 	nvmem-cell-names = "eeprom";
+	status = "okay";
 };
 
 &state_default {

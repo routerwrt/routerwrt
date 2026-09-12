@@ -1,0 +1,8 @@
+#!/bin/sh
+
+export LC_ALL=C
+
+for script in /etc/boot.d/*; do
+	[ -x "$script" ] || continue
+	"$script" || echo "boot: $script failed" >/dev/console
+done

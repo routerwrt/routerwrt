@@ -238,7 +238,7 @@
 		};
 
 		uartlite: serial@c00 {
-			compatible = "ralink,rt3052-uart", "ralink,rt2880-uart", "ns16550a";
+			compatible = "ralink,rt2880-uart";
 			reg = <0xc00 0x100>;
 
 			clocks = <&sysc RT305X_CLK_UARTLITE>;
@@ -307,41 +307,134 @@
 	};
 
 	ethernet: ethernet@10100000 {
-		compatible = "ralink,rt3050-eth";
+		compatible = "ralink,rt305x-fe";
 		reg = <0x10100000 0x10000>;
 
-		clocks = <&sysc RT305X_CLK_ETHERNET>;
-
-		resets = <&sysc 21>, <&sysc 23>;
-		reset-names = "fe", "esw";
+//		clocks = <&sysc RT305X_CLK_ETHERNET>;
 
 		interrupt-parent = <&cpuintc>;
 		interrupts = <5>;
 
-		mediatek,switch = <&esw>;
+		resets = <&sysc 21>;
+		reset-names = "fe";
 	};
 
-	esw: esw@10110000 {
-		compatible = "ralink,rt3050-esw";
+	esw: switch@10110000 {
+		compatible = "ralink,rt305x-esw";
 		reg = <0x10110000 0x8000>;
-
-		resets = <&sysc 24>;
-		reset-names = "ephy";
 
 		interrupt-parent = <&intc>;
 		interrupts = <17>;
-	};
 
+		resets = <&sysc 23>, <&sysc 24>;
+		reset-names = "esw", "ephy";
+
+		dsa,member = <0 0>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				phy-mode = "mii";
+				phy-handle = <&phy0>;
+			};
+
+			port@1 {
+				reg = <1>;
+				phy-mode = "mii";
+				phy-handle = <&phy1>;
+			};
+
+			port@2 {
+				reg = <2>;
+				phy-mode = "mii";
+				phy-handle = <&phy2>;
+			};
+
+			port@3 {
+				reg = <3>;
+				phy-mode = "mii";
+				phy-handle = <&phy3>;
+			};
+
+			port@4 {
+				reg = <4>;
+				phy-mode = "mii";
+				phy-handle = <&phy4>;
+			};
+
+			port@6 {
+				reg = <6>;
+				ethernet = <&ethernet>;
+				phy-mode = "rgmii";
+
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+					pause;
+				};
+			};
+		};
+
+		mdio {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			phy0: ethernet-phy@0 {
+				reg = <0>;
+			};
+
+			phy1: ethernet-phy@1 {
+				reg = <1>;
+			};
+
+			phy2: ethernet-phy@2 {
+				reg = <2>;
+			};
+
+			phy3: ethernet-phy@3 {
+				reg = <3>;
+			};
+
+			phy4: ethernet-phy@4 {
+				reg = <4>;
+			};
+		};
+
+		leds {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			led@0 {
+				reg = <0>;
+			};
+
+			led@1 {
+				reg = <1>;
+			};
+
+			led@2 {
+				reg = <2>;
+			};
+
+			led@3 {
+				reg = <3>;
+			};
+
+			led@4 {
+				reg = <4>;
+			};
+		};
+	};
+	
 	wmac: wmac@10180000 {
 		compatible = "ralink,rt3050-wifi", "ralink,rt2880-wifi";
 		reg = <0x10180000 0x40000>;
-
 		clocks = <&sysc RT305X_CLK_WMAC>;
-
 		interrupt-parent = <&cpuintc>;
 		interrupts = <6>;
-
-		ralink,eeprom = "soc_wmac.eeprom";
 	};
 
 	otg: otg@101c0000 {

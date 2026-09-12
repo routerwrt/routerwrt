@@ -5,13 +5,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=hostapd
-PKG_RELEASE:=2
+PKG_RELEASE:=1
 
 PKG_SOURCE_URL:=https://w1.fi/hostap.git
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_DATE:=2026-08-07
-PKG_SOURCE_VERSION:=831364bf02710ad09c2f27d3efa92abeeb5634c0
-PKG_MIRROR_HASH:=d1b9ca0e6aaaba928fc5d5b02c0084083e745a38ae1214d0e2dc5d1ea6d50393
+PKG_SOURCE_DATE:=2026-04-02
+PKG_SOURCE_VERSION:=b004de0bf1b54d669d358b7f33d6f474bd9719a6
+PKG_MIRROR_HASH:=0b0184e600c994a1f0415f52e8af26b39f13e376a30cdf0b4f3ca1a206e52fc8
 
 PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
 PKG_LICENSE:=BSD-3-Clause
@@ -89,8 +89,7 @@ ifneq ($(LOCAL_VARIANT),mini)
 endif
 
 
-CORE_DEPENDS =
-
+CORE_DEPENDS = #+libubus +libubox +libblobmsg-json
 OPENSSL_DEPENDS = +PACKAGE_$(1):libopenssl +PACKAGE_$(1):libopenssl-legacy
 
 DRIVER_MAKEOPTS= \
@@ -600,7 +599,7 @@ TARGET_CPPFLAGS := \
 	-D_GNU_SOURCE \
 	$(if $(CONFIG_WPA_MSG_MIN_PRIORITY),-DCONFIG_MSG_MIN_PRIORITY=$(CONFIG_WPA_MSG_MIN_PRIORITY))
 
-TARGET_LDFLAGS += -lm -lnl-tiny
+TARGET_LDFLAGS += -lnl-tiny # -lubus -lubox -lblobmsg_json
 
 ifdef CONFIG_WPA_ENABLE_WEP
     DRIVER_MAKEOPTS += CONFIG_WEP=y
@@ -715,15 +714,27 @@ endif
 
 define Install/hostapd
 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/usr/share/hostap
+#	$(INSTALL_DATA) ./files/hostapd.uc $(1)/usr/share/hostap/
 	$(if $(findstring full,$(CONFIG_VARIANT)),$(Install/hostapd/full))
 endef
 
 define Install/supplicant
 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/usr/share/hostap
+#	$(INSTALL_DATA) ./files/wpa_supplicant.uc $(1)/usr/share/hostap/
 endef
 
 define Package/hostapd-common/install
-# no hostapd-common needed
+#	$(INSTALL_DIR) \
+#	  $(1)/etc/capabilities \
+#	  $(1)/etc/hotplug.d/ieee80211 \
+#	  $(1)/etc/init.d $(1)/lib/netifd \
+#	  $(1)/usr/share/acl.d \
+#	  $(1)/usr/share/hostap
+#	$(INSTALL_BIN) ./files/dhcp-get-server.sh $(1)/lib/netifd/dhcp-get-server.sh
+#	$(INSTALL_BIN) ./files/wpad.init $(1)/etc/init.d/wpad
+#	$(INSTALL_DATA) ./files/wpad_acl.json $(1)/usr/share/acl.d
+#	$(INSTALL_DATA) ./files/wpad.json $(1)/etc/capabilities
+	:
 endef
 
 define Package/hostapd/install

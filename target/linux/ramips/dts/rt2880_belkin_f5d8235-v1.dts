@@ -209,11 +209,22 @@
 
 &ethernet {
 	status = "okay";
-	nvmem-cells = <&macaddr_factory_4>;
-	nvmem-cell-names = "mac-address";
 
-	port@0 {
-		mediatek,fixed-link = <1000 1 1 1>;
+	nvmem-cells = <&macaddr_factory_4 0>;
+	nvmem-cell-names = "mac-address";
+	
+	ppe: ppe {
+	compatible = "ralink,rt2880-ppe";
+	};
+};
+
+&gmac0 {
+	status = "okay";
+	phy-mode = "rgmii";
+	fixed-link {
+		speed = <1000>;
+		full-duplex;
+		pause;
 	};
 };
 

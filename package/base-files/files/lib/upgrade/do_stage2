@@ -5,21 +5,26 @@
 include /lib/upgrade
 
 v "Performing system upgrade..."
-if type 'platform_do_upgrade' >/dev/null 2>/dev/null; then
+
+if type platform_do_upgrade >/dev/null 2>&1; then
 	platform_do_upgrade "$IMAGE"
 else
 	default_do_upgrade "$IMAGE"
 fi
 
-if [ -n "$UPGRADE_BACKUP" ] && type 'platform_copy_config' >/dev/null 2>/dev/null; then
+if [ -n "$UPGRADE_BACKUP" ] &&
+   type platform_copy_config >/dev/null 2>&1; then
 	platform_copy_config
 fi
 
 v "Upgrade completed"
-sleep 1
+
+sync
+umount -a
 
 v "Rebooting system..."
-umount -a
 reboot -f
+
+# Fallback in case reboot does not return as expected.
 sleep 5
-echo b 2>/dev/null >/proc/sysrq-trigger
+echo b > /proc/sysrq-trigger 2>/dev/null

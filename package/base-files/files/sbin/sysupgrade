@@ -1,454 +1,565 @@
 #!/bin/sh
+#
+# RouterWRT sysupgrade
+#
+# Local firmware images only.
+# Configuration preservation:
+#   - /etc/sysupgrade.conf
+#   - /lib/upgrade/keep.d/*
+#   - changed APK conffiles
+#
+# No:
+#   - OPKG
+#   - UCI
+#   - ubus
+#   - jshn/libubox
+#   - wget / remote URLs
+#
 
 . /lib/functions.sh
-. /lib/functions/system.sh
-. /usr/share/libubox/jshn.sh
 
-# File-local constants
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
 CONF_TAR=/tmp/sysupgrade.tgz
-ETCBACKUP_DIR=/etc/backup
-INSTALLED_PACKAGES=${ETCBACKUP_DIR}/installed_packages.txt
+CONFFILES=/tmp/sysupgrade.conffiles
 COMMAND=/lib/upgrade/do_stage2
 
-# File-local globals
-ADD_PROVISIONING=0
-SAVE_OVERLAY=0
-SAVE_OVERLAY_PATH=
-SAVE_PARTITIONS=1
-SAVE_INSTALLED_PKGS=0
-SKIP_UNCHANGED=0
-CONF_IMAGE=
-CONF_BACKUP_LIST=0
-CONF_BACKUP=
-CONF_RESTORE=
-USE_CURR_PART=0
-NEED_IMAGE=
-HELP=0
-TEST=0
 
-# Globals accessed in other files
+# ---------------------------------------------------------------------------
+# Globals used by upgrade/platform scripts
+# ---------------------------------------------------------------------------
+
 export MTD_ARGS=""
 export MTD_CONFIG_ARGS=""
+
 export INTERACTIVE=0
 export VERBOSE=1
 export SAVE_CONFIG=1
 export IGNORE_MINOR_COMPAT=0
 export FORCE=0
-export CONFFILES=/tmp/sysupgrade.conffiles
 
-# parse options
-while [ -n "$1" ]; do
-	case "$1" in
-		-i) export INTERACTIVE=1;;
-		-v) export VERBOSE="$(($VERBOSE + 1))";;
-		-q) export VERBOSE="$(($VERBOSE - 1))";;
-		-n) export SAVE_CONFIG=0;;
-		-c) SAVE_OVERLAY=1 SAVE_OVERLAY_PATH=/etc;;
-		-o) SAVE_OVERLAY=1 SAVE_OVERLAY_PATH=/;;
-		-p) SAVE_PARTITIONS=0;;
-		-P) ADD_PROVISIONING=1;;
-		-k) SAVE_INSTALLED_PKGS=1;;
-		-u) SKIP_UNCHANGED=1;;
-		-b|--create-backup) CONF_BACKUP="$2" NEED_IMAGE=1; shift;;
-		-r|--restore-backup) CONF_RESTORE="$2" NEED_IMAGE=1; shift;;
-		-l|--list-backup) CONF_BACKUP_LIST=1;;
-		-f) CONF_IMAGE="$2"; shift;;
-		-s) USE_CURR_PART=1;;
-		-F|--force) export FORCE=1;;
-		-T|--test) TEST=1;;
-		-h|--help) HELP=1; break;;
-		--ignore-minor-compat-version) export IGNORE_MINOR_COMPAT=1;;
-		-*)
-			echo "Invalid option: $1" >&2
-			exit 1
-		;;
-		*) break;;
-	esac
-	shift;
-done
-
-print_help() {
-	cat <<EOF
-Usage: $0 [<upgrade-option>...] <image file or URL>
-       $0 [-q] [-i] [-c] [-u] [-o] [-k] [-P] <backup-command> <file>
-
-upgrade-option:
-	-f <config>  restore configuration from .tar.gz (file or url)
-	-i           interactive mode
-	-c           attempt to preserve all changed files in /etc/
-	-o           attempt to preserve all changed files in /, except those
-	             from packages but including changed confs.
-	-u           skip from backup files that are equal to those in /rom
-	-n           do not save configuration over reflash
-	-p           do not attempt to restore the partition table after flash.
-	-k           include in backup a list of current installed packages at
-	             $INSTALLED_PACKAGES
-	-s           stay on current partition (for dual firmware devices)
-	-P           create provisioning partition to keep sensitive data across
-	             factory resets.
-	-T | --test
-	             Verify image and config .tar.gz but do not actually flash.
-	-F | --force
-	             Flash image even if image checks fail, this is dangerous!
-	--ignore-minor-compat-version
-		     Flash image even if the minor compat version is incompatible.
-	-q           less verbose
-	-v           more verbose
-	-h | --help  display this help
-
-backup-command:
-	-b | --create-backup <file>
-	             create .tar.gz of files specified in sysupgrade.conf
-	             then exit. Does not flash an image. If file is '-',
-	             i.e. stdout, verbosity is set to 0 (i.e. quiet).
-	-r | --restore-backup <file>
-	             restore a .tar.gz created with sysupgrade -b
-	             then exit. Does not flash an image. If file is '-',
-	             the archive is read from stdin.
-	-l | --list-backup
-	             list the files that would be backed up when calling
-	             sysupgrade -b. Does not create a backup file.
-
-EOF
-}
-
-IMAGE="$1"
-
-if [ $HELP -gt 0 ]; then
-	print_help
-	exit 0
-fi
-
-if [ -z "$IMAGE" -a -z "$NEED_IMAGE" -a $CONF_BACKUP_LIST -eq 0 ]; then
-	print_help
-	exit 1
-fi
-
-[ -n "$IMAGE" -a -n "$NEED_IMAGE" ] && {
-	cat <<-EOF
-		-b|--create-backup and -r|--restore-backup do not perform a firmware upgrade.
-		Do not specify both -b|-r and a firmware image.
-	EOF
-	exit 1
-}
-
-# prevent messages from clobbering the tarball when using stdout
-[ "$CONF_BACKUP" = "-" ] && export VERBOSE=0
+export CONFFILES
 
 
-list_conffiles() {
-	if [ -f /usr/lib/opkg/status ]; then
-		awk '
-			BEGIN { conffiles = 0 }
-			/^Conffiles:/ { conffiles = 1; next }
-			!/^ / { conffiles = 0; next }
-			conffiles == 1 { print }
-		' /usr/lib/opkg/status
-	elif [ -d /lib/apk/packages ]; then
-		conffiles=""
-		for file in $(find /lib/apk/packages -name "*.conffiles_static" -type f); do
-			conffiles="$(echo -e "$(cat $file)\n$conffiles")"
-		done
-		echo "$conffiles"
-	fi
-}
+# ---------------------------------------------------------------------------
+# Local state
+# ---------------------------------------------------------------------------
 
-list_changed_conffiles() {
-	# Cannot handle spaces in filenames - but opkg cannot either...
-	list_conffiles | while read file csum; do
-		[ -r "$file" ] || continue
+CONF_BACKUP=
+CONF_RESTORE=
+CONF_BACKUP_LIST=0
+TEST=0
 
-		echo "${csum}  ${file}" | busybox sha256sum -sc - || echo "$file"
-	done
-}
 
-list_static_conffiles() {
-	local filter=$1
-
-	find $(sed -ne '/^[[:space:]]*$/d; /^#/d; p' \
-		/etc/sysupgrade.conf /lib/upgrade/keep.d/* 2>/dev/null) \
-		\( -type f -o -type l \) $filter 2>/dev/null
-}
-
-build_list_of_backup_config_files() {
-	local file="$1"
-
-	( list_static_conffiles "$find_filter"; list_changed_conffiles ) |
-		sort -u > "$file"
-	return 0
-}
-
-build_list_of_backup_overlay_files() {
-	local file="$1"
-
-	local packagesfiles=$1.packagesfiles
-	touch "$packagesfiles"
-
-	if [ "$SAVE_OVERLAY_PATH" = / ]; then
-		local conffiles=$1.conffiles
-		local keepfiles=$1.keepfiles
-
-		list_conffiles | cut -f2 -d ' ' | sort -u > "$conffiles"
-
-		# backup files from /etc/sysupgrade.conf and /lib/upgrade/keep.d, but
-		# ignore those aready controlled by opkg conffiles
-		list_static_conffiles | sort -u |
-			grep -h -v -x -F -f $conffiles > "$keepfiles"
-
-		# backup conffiles, but only those changed if '-u'
-		[ $SKIP_UNCHANGED = 1 ] &&
-			list_changed_conffiles | sort -u > "$conffiles"
-
-		# do not backup files from packages, except those listed
-		# in conffiles and keep.d
-		if [ -f /usr/lib/opkg/status ]; then
-			find /usr/lib/opkg/info -type f -name "*.list" -exec cat {} \;
-			find /usr/lib/opkg/info -type f -name "*.control" -exec sed \
-				-ne '/^Alternatives/{s/^Alternatives: //;s/, /\n/g;p}' {} \; |
-				cut -f2 -d:
-		elif [ -d /lib/apk/packages ]; then
-			find /lib/apk/packages -type f -name "*.list" -exec cat {} \;
-			find /lib/apk/packages -type f -name "*.alternatives" -exec cat {} \; |
-				tr ' ' '\n' |
-				cut -f2 -d:
-		fi |  grep -v -x -F -f $conffiles |
-		     grep -v -x -F -f $keepfiles | sort -u > "$packagesfiles"
-		rm -f "$keepfiles" "$conffiles"
-	fi
-
-	# busybox grep bug when file is empty
-	[ -s "$packagesfiles" ] || echo > $packagesfiles
-
-	( cd /overlay/upper/; find .$SAVE_OVERLAY_PATH \( -type f -o -type l \) $find_filter | sed \
-		-e 's,^\.,,' \
-		-e '\,^/etc/board.json$,d' \
-		-e '\,^/etc/luci-uploads/\.placeholder,d' \
-		-e '\,/[^/]*-opkg$,d' \
-		-e '\,/[^/]*\.apk-new$,d' \
-		-e '\,^/etc/urandom.seed$,d' \
-		-e '\,^/etc/apk/world$,d' \
-		-e '\,^/etc/apk/repositories\.d/distfeeds\.list$,d' \
-		-e "\,^$INSTALLED_PACKAGES$,d" \
-		-e '\,^/usr/lib/opkg/.*,d' \
-		-e '\,^/lib/apk/.*,d' \
-		-e '\,^/run$,d' \
-	) | grep -v -x -F -f $packagesfiles > "$file"
-
-	rm -f "$packagesfiles"
-
-	return 0
-}
-
-if [ $SAVE_OVERLAY = 1 ]; then
-	[ ! -d /overlay/upper/etc ] && {
-		echo "Cannot find '/overlay/upper/etc', required for '-c' or '-o'" >&2
-		exit 1
-	}
-	sysupgrade_init_conffiles="build_list_of_backup_overlay_files"
-else
-	sysupgrade_init_conffiles="build_list_of_backup_config_files"
-fi
-
-find_filter=""
-if [ $SKIP_UNCHANGED = 1 ]; then
-	[ ! -d /rom/ ] && {
-		echo "'/rom/' is required by '-u'"
-		exit 1
-	}
-	find_filter='( ( -exec test -e /rom/{} ; -exec cmp -s /{} /rom/{} ; ) -o -print )'
-fi
+# ---------------------------------------------------------------------------
+# Load generic + target/subtarget upgrade implementation
+# ---------------------------------------------------------------------------
 
 include /lib/upgrade
 
-create_backup_archive() {
-	local conf_tar="$1"
-	local disabled
-	local err
 
-	[ "$(rootfs_type)" = "tmpfs" ] && {
-		echo "Cannot save config while running from ramdisk." >&2
-		ask_bool 0 "Abort" && exit
-		return 0
-	}
-	run_hooks "$CONFFILES" $sysupgrade_init_conffiles
-	ask_bool 0 "Edit config file list" && vi "$CONFFILES"
+usage()
+{
+	cat <<EOF
+Usage:
+  $0 [options] <image>
 
-	[ "$conf_tar" != "-" ] || conf_tar=""
+Options:
+  -i        interactive mode
+  -n        do not preserve configuration
+  -F        force upgrade if a forceable image check fails
+  -T        test image only; do not flash
+  -q        less verbose
+  -v        more verbose
+  -h        show this help
 
-	v "Saving config files..."
-	[ "$VERBOSE" -gt 1 ] && TAR_V="v" || TAR_V=""
-	sed -i -e 's,^/,,' "$CONFFILES"
-	set -o pipefail
-	{
-		local ret=0
+  --ignore-minor-compat-version
+            allow keeping configuration across a minor compat change
 
-		if [ $ret -eq 0 ]; then
-			for service in /etc/init.d/*; do
-				if ! $service enabled >/dev/null 2>&1; then
-				disabled="$disabled$service disable\n"
-				fi
-			done
-			disabled="$disabled\nexit 0"
-			tar_print_member "/etc/uci-defaults/10_disable_services" "$(echo -e $disabled)" "$(date -r /etc/rc.d "+%s")" || ret=1
-		fi
+Backup commands:
+  -b <file> create configuration backup and exit
+  -r <file> restore configuration backup and exit
+  -l        list files that would be preserved
 
-		# Part of archive with installed packages info
-		if [ $ret -eq 0 ]; then
-			if [ "$SAVE_INSTALLED_PKGS" -eq 1 ]; then
-				# Format: pkg-name<TAB>{rom,overlay,unknown}
-				# rom is used for pkgs in /rom, even if updated later
-				if [ -d "/usr/lib/opkg/info" ]; then
-					tar_print_member "$INSTALLED_PACKAGES" "$(find /usr/lib/opkg/info -name "*.control" \( \
-						\( -exec test -f /rom/{} \; -exec echo {} rom \; \) -o \
-						\( -exec test -f /overlay/upper/{} \; -exec echo {} overlay \; \) -o \
-						\( -exec echo {} unknown \; \) \
-						\) | sed -e 's,.*/,,;s/\.control /\t/')" || ret=1
-				elif [ -d "/lib/apk/packages" ]; then
-					tar_print_member "$INSTALLED_PACKAGES" "$(find /lib/apk/packages -name "*.list" \( \
-						\( -exec test -f /rom/{} \; -exec echo {} rom \; \) -o \
-						\( -exec test -f /overlay/upper/{} \; -exec echo {} overlay \; \) -o \
-						\( -exec echo {} unknown \; \) \
-						\) | sed -e 's,.*/,,;s/\.list /\t/')" || ret=1
-				else
-					echo "Failed to detect installed packages metadata files." >&2
-					ret=1
-				fi
-			fi
-		fi
-
-		# Rest of archive with config files and ending padding
-		if [ $ret -eq 0 ]; then
-			tar c${TAR_V} -C / -T "$CONFFILES" || ret=1
-		fi
-
-		[ $ret -eq 0 ]
-	} | gzip > "${conf_tar:-/proc/self/fd/1}"
-	err=$?
-	set +o pipefail
-
-	if [ "$err" -ne 0 ]; then
-		echo "Failed to create the configuration backup."
-		[ -f "$conf_tar" ] && rm -f "$conf_tar"
-	fi
-
-	rm -f "$CONFFILES"
-
-	return "$err"
+Firmware images must already exist on the router.
+There is no URL/wget download support.
+EOF
 }
 
-if [ $CONF_BACKUP_LIST -eq 1 ]; then
-	run_hooks "$CONFFILES" $sysupgrade_init_conffiles
-	[ "$SAVE_INSTALLED_PKGS" -eq 1 ] && echo ${INSTALLED_PACKAGES} >> "$CONFFILES"
+
+# ---------------------------------------------------------------------------
+# Arguments
+# ---------------------------------------------------------------------------
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-i)
+			export INTERACTIVE=1
+			;;
+
+		-n)
+			export SAVE_CONFIG=0
+			;;
+
+		-F|--force)
+			export FORCE=1
+			;;
+
+		-T|--test)
+			TEST=1
+			;;
+
+		-q)
+			export VERBOSE=$((VERBOSE - 1))
+			;;
+
+		-v)
+			export VERBOSE=$((VERBOSE + 1))
+			;;
+
+		--ignore-minor-compat-version)
+			export IGNORE_MINOR_COMPAT=1
+			;;
+
+		-b|--create-backup)
+			[ $# -ge 2 ] || {
+				echo "Missing backup filename" >&2
+				exit 1
+			}
+
+			CONF_BACKUP="$2"
+			shift
+			;;
+
+		-r|--restore-backup)
+			[ $# -ge 2 ] || {
+				echo "Missing backup filename" >&2
+				exit 1
+			}
+
+			CONF_RESTORE="$2"
+			shift
+			;;
+
+		-l|--list-backup)
+			CONF_BACKUP_LIST=1
+			;;
+
+		-h|--help)
+			usage
+			exit 0
+			;;
+
+		-*)
+			echo "Unknown option: $1" >&2
+			usage >&2
+			exit 1
+			;;
+
+		*)
+			break
+			;;
+	esac
+
+	shift
+done
+
+IMAGE="$1"
+
+
+# ---------------------------------------------------------------------------
+# APK configuration files
+# ---------------------------------------------------------------------------
+
+list_apk_conffiles()
+{
+	local file
+
+	[ -d /lib/apk/packages ] || return 0
+
+	for file in /lib/apk/packages/*.conffiles_static; do
+		[ -f "$file" ] || continue
+		cat "$file"
+	done
+}
+
+
+list_changed_apk_conffiles()
+{
+	local file csum
+
+	list_apk_conffiles |
+	while read -r file csum; do
+		[ -n "$file" ] || continue
+		[ -r "$file" ] || continue
+
+		#
+		# APK stores the original checksum. Preserve only files which
+		# differ from the packaged version.
+		#
+		if [ -n "$csum" ]; then
+			echo "$csum  $file" |
+				busybox sha256sum -sc - >/dev/null 2>&1 ||
+				echo "$file"
+		else
+			#
+			# Be conservative if metadata has no checksum.
+			#
+			echo "$file"
+		fi
+	done
+}
+
+
+# ---------------------------------------------------------------------------
+# Explicit RouterWRT keep files
+# ---------------------------------------------------------------------------
+
+list_static_conffiles()
+{
+	local paths
+
+	paths="$(
+		sed -ne '
+			/^[[:space:]]*$/d
+			/^[[:space:]]*#/d
+			p
+		' \
+		/etc/sysupgrade.conf \
+		/lib/upgrade/keep.d/* \
+		2>/dev/null
+	)"
+
+	[ -n "$paths" ] || return 0
+
+	find $paths \
+		\( -type f -o -type l \) \
+		2>/dev/null
+}
+
+
+build_backup_list()
+{
+	local outfile="$1"
+
+	{
+		list_static_conffiles
+		list_changed_apk_conffiles
+	} |
+		sort -u > "$outfile"
+}
+
+
+# ---------------------------------------------------------------------------
+# Configuration archive
+# ---------------------------------------------------------------------------
+
+create_backup_archive()
+{
+	local archive="$1"
+	local list=/tmp/sysupgrade.conffiles.relative
+
+	if [ "$(rootfs_type)" = "tmpfs" ]; then
+		echo "Cannot save configuration while running from ramdisk." >&2
+		return 1
+	fi
+
+	build_backup_list "$CONFFILES" || return 1
+
+	#
+	# tar -C / expects paths without a leading slash.
+	#
+	sed 's,^/,,' "$CONFFILES" > "$list"
+
+	v "Saving configuration..."
+
+	if [ "$VERBOSE" -gt 1 ]; then
+		tar -C / -czvf "$archive" -T "$list"
+	else
+		tar -C / -czf "$archive" -T "$list"
+	fi
+
+	local ret=$?
+
+	rm -f "$list" "$CONFFILES"
+
+	if [ "$ret" -ne 0 ]; then
+		echo "Failed to create configuration backup." >&2
+		rm -f "$archive"
+		return "$ret"
+	fi
+
+	return 0
+}
+
+
+restore_backup_archive()
+{
+	local archive="$1"
+
+	[ -f "$archive" ] || {
+		echo "Backup archive not found: $archive" >&2
+		return 1
+	}
+
+	case "$(get_magic_word "$archive" cat)" in
+		1f8b)
+			;;
+		*)
+			echo "Invalid backup archive; expected .tar.gz" >&2
+			return 1
+			;;
+	esac
+
+	v "Restoring configuration..."
+
+	if type platform_restore_backup >/dev/null 2>&1; then
+		platform_restore_backup
+	else
+		tar -C / -xzf "$archive"
+	fi
+}
+
+
+# ---------------------------------------------------------------------------
+# Standalone backup operations
+# ---------------------------------------------------------------------------
+
+if [ "$CONF_BACKUP_LIST" -eq 1 ]; then
+	build_backup_list "$CONFFILES"
 	cat "$CONFFILES"
 	rm -f "$CONFFILES"
 	exit 0
 fi
 
+
 if [ -n "$CONF_BACKUP" ]; then
 	create_backup_archive "$CONF_BACKUP"
-	exit
-fi
-
-if [ -n "$CONF_RESTORE" ]; then
-	if [ "$CONF_RESTORE" != "-" ] && [ ! -f "$CONF_RESTORE" ]; then
-		echo "Backup archive '$CONF_RESTORE' not found." >&2
-		exit 1
-	fi
-
-	[ "$VERBOSE" -gt 1 ] && TAR_V="v" || TAR_V=""
-	v "Restoring config files..."
-	if [ "$(type -t platform_restore_backup)" == 'platform_restore_backup' ]; then
-		platform_restore_backup "$TAR_V"
-	else
-		tar -C / -x${TAR_V}zf "$CONF_RESTORE"
-	fi
 	exit $?
 fi
 
-type platform_check_image >/dev/null 2>/dev/null || {
+
+if [ -n "$CONF_RESTORE" ]; then
+	restore_backup_archive "$CONF_RESTORE"
+	exit $?
+fi
+
+
+# ---------------------------------------------------------------------------
+# Firmware image
+# ---------------------------------------------------------------------------
+
+[ -n "$IMAGE" ] || {
+	usage
+	exit 1
+}
+
+IMAGE="$(readlink -f "$IMAGE")"
+
+[ -f "$IMAGE" ] || {
+	echo "Firmware image not found: $IMAGE" >&2
+	exit 1
+}
+
+
+#
+# The image must survive the RAM-root pivot.
+# /tmp is moved into the RAM root by stage2.
+#
+case "$IMAGE" in
+	/tmp/*)
+		;;
+
+	*)
+		v "Copying firmware image to /tmp..."
+
+		cp -f "$IMAGE" /tmp/sysupgrade.img || {
+			echo "Failed to copy firmware image to /tmp." >&2
+			exit 1
+		}
+
+		IMAGE=/tmp/sysupgrade.img
+		;;
+esac
+
+
+# ---------------------------------------------------------------------------
+# Image validation
+#
+# This replaces /usr/libexec/validate_firmware_image and therefore avoids
+# its jshn/functions.system/JSON dependency.
+# ---------------------------------------------------------------------------
+
+VALID=1
+FORCEABLE=1
+ALLOW_BACKUP=1
+
+
+#
+# Some platform_check_image() implementations use these callbacks.
+#
+notify_firmware_invalid()
+{
+	VALID=0
+}
+
+
+notify_firmware_broken()
+{
+	VALID=0
+	FORCEABLE=0
+}
+
+
+notify_firmware_no_backup()
+{
+	ALLOW_BACKUP=0
+}
+
+
+#
+# We don't need structured per-test JSON results.
+#
+notify_firmware_test_result()
+{
+	:
+}
+
+
+#
+# fwtool signature
+#
+if type fwtool_check_signature >/dev/null 2>&1; then
+	if ! fwtool_check_signature "$IMAGE"; then
+		VALID=0
+	fi
+fi
+
+
+#
+# fwtool metadata / board compatibility
+#
+if type fwtool_check_image >/dev/null 2>&1; then
+	if ! fwtool_check_image "$IMAGE"; then
+		VALID=0
+	fi
+fi
+
+
+#
+# Platform-specific validation
+#
+type platform_check_image >/dev/null 2>&1 || {
 	echo "Firmware upgrade is not implemented for this platform." >&2
 	exit 1
 }
 
-case "$IMAGE" in
-	http://*|\
-	https://*)
-		wget -O/tmp/sysupgrade.img "$IMAGE" || exit 1
-		IMAGE=/tmp/sysupgrade.img
-		;;
-esac
+platform_check_image "$IMAGE"
+platform_result=$?
 
-IMAGE="$(readlink -f "$IMAGE")"
-
-case "$IMAGE" in
-	'')
-		echo "Image file not found." >&2
-		exit 1
+case "$platform_result" in
+	0)
 		;;
-	/tmp/*)	;;
+
+	74)
+		#
+		# OpenWrt convention: return 74 means broken/non-forceable image.
+		#
+		VALID=0
+		FORCEABLE=0
+		;;
+
 	*)
-		v "Image not in /tmp, copying..."
-		cp -f "$IMAGE" /tmp/sysupgrade.img
-		IMAGE=/tmp/sysupgrade.img
+		VALID=0
 		;;
 esac
 
-json_load "$(/usr/libexec/validate_firmware_image "$IMAGE")" || {
-	echo "Failed to check image"
-	exit 1
-}
-json_get_var valid "valid"
-json_get_var forceable "forceable"
-[ "$valid" -eq 0 ] && {
-	if [ $FORCE -eq 1 ] && [ "$forceable" -eq 1 ]; then
-		echo "Image check failed but --force given - will update anyway!" >&2
-	else
-		echo "Image check failed." >&2
+
+#
+# Process validation result.
+#
+if [ "$VALID" -eq 0 ]; then
+	if [ "$FORCEABLE" -eq 0 ]; then
+		echo "Firmware image is broken and cannot be installed." >&2
 		exit 1
 	fi
-}
 
-if [ -n "$CONF_IMAGE" ]; then
-	case "$(get_magic_word "$CONF_IMAGE" cat)" in
-		# .gz files
-		1f8b) ;;
-		*)
-			echo "Invalid config file. Please use only .tar.gz files" >&2
-			exit 1
-		;;
-	esac
-	get_image "$CONF_IMAGE" "cat" > "$CONF_TAR"
-	export SAVE_CONFIG=1
-elif ask_bool $SAVE_CONFIG "Keep config files over reflash"; then
-	[ $TEST -eq 1 ] || create_backup_archive "$CONF_TAR" || exit
-	export SAVE_CONFIG=1
-else
-	[ $TEST -eq 1 ] || rm -f "$CONF_TAR"
-	export SAVE_CONFIG=0
+	if [ "$FORCE" -ne 1 ]; then
+		echo "Firmware image validation failed." >&2
+		echo "Use sysupgrade -F only if you are certain this image is correct." >&2
+		exit 1
+	fi
+
+	echo "WARNING: image validation failed; forcing upgrade." >&2
 fi
 
-if [ $TEST -eq 1 ]; then
+
+#
+# Some image transitions explicitly prohibit preserving configuration.
+#
+if [ "$SAVE_CONFIG" -eq 1 ] && [ "$ALLOW_BACKUP" -eq 0 ]; then
+	echo "This image does not allow configuration preservation." >&2
+	echo "Upgrade with 'sysupgrade -n' instead." >&2
+	exit 1
+fi
+
+
+# ---------------------------------------------------------------------------
+# Test-only mode
+# ---------------------------------------------------------------------------
+
+if [ "$TEST" -eq 1 ]; then
+	v "Firmware image validation successful."
 	exit 0
 fi
 
-install_bin /sbin/upgraded
-v "Commencing upgrade. Closing all shell sessions."
 
-if [ -n "$FAILSAFE" ]; then
-	printf '%s\x00%s\x00%s' "$RAM_ROOT" "$IMAGE" "$COMMAND" >/tmp/sysupgrade
-	lock -u /tmp/.failsafe
+# ---------------------------------------------------------------------------
+# Configuration preservation
+# ---------------------------------------------------------------------------
+
+if ask_bool "$SAVE_CONFIG" "Keep configuration over reflash"; then
+	create_backup_archive "$CONF_TAR" || exit 1
+	export SAVE_CONFIG=1
+	export UPGRADE_BACKUP="$CONF_TAR"
 else
-	json_init
-	json_add_string prefix "$RAM_ROOT"
-	json_add_string path "$IMAGE"
-	[ $FORCE -eq 1 ] && json_add_boolean force 1
-	[ $SAVE_CONFIG -eq 1 ] && json_add_string backup "$CONF_TAR"
-	json_add_string command "$COMMAND"
-	json_add_object options
-	json_add_int save_partitions "$SAVE_PARTITIONS"
-	json_add_int add_provisioning "$ADD_PROVISIONING"
-	[ $USE_CURR_PART -eq 1 ] && json_add_boolean use_curr_part 1
-	json_close_object
-
-	ubus call system sysupgrade "$(json_dump)"
+	rm -f "$CONF_TAR"
+	export SAVE_CONFIG=0
+	unset UPGRADE_BACKUP
 fi
+
+
+# ---------------------------------------------------------------------------
+# Final interactive confirmation
+#
+# GUI callers do their own confirmation and normally do not use -i.
+# ---------------------------------------------------------------------------
+
+if [ "$INTERACTIVE" -eq 1 ]; then
+	ask_bool 0 "Flash firmware and reboot" || {
+		echo "Upgrade cancelled."
+		exit 0
+	}
+fi
+
+
+# ---------------------------------------------------------------------------
+# Upgrade
+# ---------------------------------------------------------------------------
+
+v "Commencing system upgrade..."
+
+#
+# RouterWRT does not use procd/ubus to enter stage2.
+#
+# stage2 stops runit-managed services, kills remaining userspace,
+# constructs the RAM root, pivots away from the live filesystem and
+# executes do_stage2.
+#
+exec /lib/upgrade/stage2 "$IMAGE" "$COMMAND"
+
+echo "Failed to start upgrade stage2." >&2
+exit 1

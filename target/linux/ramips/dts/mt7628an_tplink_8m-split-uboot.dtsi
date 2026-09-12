@@ -41,7 +41,7 @@
 			};
 
 			partition@50000 {
-				compatible = "tplink,firmware";
+				compatible = "denx,uimage";
 				label = "firmware";
 				reg = <0x50000 0x770000>;
 			};
@@ -105,11 +105,3 @@
 	nvmem-cell-names = "eeprom", "mac-address";
 };
 
-&ethernet {
-	nvmem-cells = <&macaddr_rom_f100 0>;
-	nvmem-cell-names = "mac-address";
-};
-
-&esw {
-	mediatek,portmap = <0x3e>;
-};
