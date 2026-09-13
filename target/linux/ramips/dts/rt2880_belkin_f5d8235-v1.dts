@@ -212,10 +212,6 @@
 
 	nvmem-cells = <&macaddr_factory_4 0>;
 	nvmem-cell-names = "mac-address";
-	
-	ppe: ppe {
-	compatible = "ralink,rt2880-ppe";
-	};
 };
 
 &gmac0 {

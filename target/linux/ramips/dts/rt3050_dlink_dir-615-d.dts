@@ -113,6 +113,10 @@
 	};
 };
 
+&ethernet {
+	status = "okay";
+};
+
 &esw {
 	ports {
 		port@0 { label = "lan4"; };

@@ -225,6 +225,10 @@
 
 		status = "disabled";
 
+		ppe: ppe {
+			compatible = "ralink,rt2880-ppe";
+		};
+
 		gmac0: port@0 {
 			reg = <0>;
 			status = "disabled";

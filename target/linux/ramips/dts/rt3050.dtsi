@@ -317,6 +317,10 @@
 
 		resets = <&sysc 21>;
 		reset-names = "fe";
+
+		ppe: ppe {
+			compatible = "ralink,rt2880-ppe";
+		};
 	};
 
 	esw: switch@10110000 {
